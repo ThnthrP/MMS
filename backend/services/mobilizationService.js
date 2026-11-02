@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { getActiveBanMap } from "./employeeBanService.js"; // ← เพิ่มบรรทัดนี้
+import { notifyCheckInFailed } from "./notifyService.js";
 
 const prisma = new PrismaClient();
 
@@ -276,10 +277,24 @@ export async function updateChecklistTask(
     data.completedBy = userName ?? userId ?? null;
   }
 
-  return prisma.mobilizationTask.update({
+  // ผลก่อนบันทึก — แจ้งเตือนเฉพาะตอนเปลี่ยนเป็น "fail" (บันทึกซ้ำ / แก้หมายเหตุ ไม่แจ้งซ้ำ)
+  const before = await prisma.mobilizationTask.findUnique({
+    where: { id: taskId },
+    select: { resultStatus: true },
+  });
+
+  const updated = await prisma.mobilizationTask.update({
     where: { id: taskId },
     data,
   });
+
+  if (resultStatus === "fail" && before?.resultStatus !== "fail") {
+    notifyCheckInFailed(taskId, userId).catch((err) =>
+      console.error("[notify] checkin_failed:", err.message),
+    );
+  }
+
+  return updated;
 }
 
 // ════════════════════════════════════════════════════════════════

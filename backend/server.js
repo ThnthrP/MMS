@@ -52,6 +52,10 @@ import auditTrail from "./middleware/auditTrail.js";
 import auditLogRoutes from "./routes/auditLogRoutes.js";
 import { purgeOldAuditLogs } from "./utils/auditLogger.js";
 
+import dataImportRoutes from "./routes/dataImportRoutes.js";
+
+import { startNotificationJobs } from "./services/emailWorker.js";
+
 // import safetyRouter from "./routes/safetyRoutes.js";
 // import medicalRouter from "./routes/medicalRoutes.js";
 // import requestRouter from "./routes/requestRoutes.js";
@@ -90,7 +94,7 @@ app.use(cookieParser());
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
-app.use("/api", auditTrail);    // ← เพิ่ม: บันทึก audit log ทุก route ใต้ /api
+app.use("/api", auditTrail); // ← เพิ่ม: บันทึก audit log ทุก route ใต้ /api
 
 // routes
 app.get("/", (req, res) => res.send("API Working"));
@@ -141,6 +145,9 @@ app.use("/api/leave-requests", leaveRequestRoutes); // ← เพิ่ม ว�
 app.use("/api/worker", workerAppRoutes); // ← เพิ่มบรรทัดนี้ (วางใกล้ๆ app.use("/api/employees", ...))
 
 app.use("/api/audit-logs", auditLogRoutes);
+
+app.use("/api/admin/import", dataImportRoutes);
+
 // app.use("/api/safety", safetyRouter);
 // app.use("/api/medical", medicalRouter);
 // app.use("/api/request", requestRouter);
@@ -155,6 +162,8 @@ if (retention > 0) {
 // start server
 app.listen(port, () => {
   console.log(`🚀 Server running on http://localhost:${port}`);
+  // คิวอีเมลแจ้งเตือน + ตรวจเลยกำหนดตอบรับ (services/emailWorker.js)
+  startNotificationJobs();
 });
 
 app.use((err, req, res, next) => {

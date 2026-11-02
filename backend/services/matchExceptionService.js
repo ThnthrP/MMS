@@ -7,6 +7,7 @@
 import { PrismaClient } from "@prisma/client";
 import { findWorkers } from "./allocationService.js";
 import { notifyRole } from "./notificationService.js";
+import { notifyMatchExceptionsRequested } from "./notifyService.js";
 import { USER_ROLES_LIGHT_INCLUDE, hasAnyRole } from "../utils/roles.js";
 
 const prisma = new PrismaClient();
@@ -139,6 +140,11 @@ export async function createRequests({
       },
       { excludeUserIds: [userId] },
     );
+    // อีเมลถึง PE ทุกคน (1 ฉบับต่อการส่ง 1 ครั้ง) — ไม่รอ และไม่ให้ error กระทบผู้ขอ
+    notifyMatchExceptionsRequested(
+      created.map((r) => r.id),
+      userId,
+    ).catch((err) => console.error("[notify] match_exception:", err.message));
   }
 
   return { created: created.length, skipped };

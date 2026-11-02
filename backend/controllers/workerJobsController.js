@@ -1,4 +1,5 @@
 import prisma from "../config/prisma.js";
+import { notifyJobRejected } from "../services/notifyService.js";
 
 // ── project ที่ Worker App ใช้แสดงการ์ดงาน ──
 // masterProjectRecord.projectCode = ON Number (หัวการ์ด)
@@ -191,6 +192,11 @@ export const rejectJob = async (req, res) => {
         data: { candidateId, eventType: "rejected", note },
       }),
     ]);
+
+    // แจ้ง Requester + MP (กระดิ่ง + อีเมลด่วน) — ไม่รอ และไม่ให้ error ของการแจ้งเตือนกระทบผู้ใช้
+    notifyJobRejected(candidateId, note.trim()).catch((err) =>
+      console.error("[notify] job_rejected:", err.message),
+    );
 
     return res.json({ success: true, message: "ปฏิเสธงานเรียบร้อย" });
   } catch (error) {
