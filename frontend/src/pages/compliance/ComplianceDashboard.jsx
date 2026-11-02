@@ -272,31 +272,38 @@ function ClientCell({
   );
 }
 
-function GapCountCards({ required, completed, missing }) {
+// หัวกลุ่มแบบบรรทัดเดียว: ● ชื่อกลุ่ม  [14/17]  ขาด 3  + แถบความคืบหน้า
+// (เดิมเป็นกล่องตัวเลขใหญ่ 3 กล่อง Required / Completed / Missing — กินพื้นที่ ~90px ต่อกลุ่ม)
+function GapGroupHeader({ dot, title, required, completed, missing }) {
+  const done = missing === 0;
+  const pct = required > 0 ? Math.round((completed / required) * 100) : 0;
   return (
-    <div className="mb-4 grid grid-cols-3 gap-2 sm:gap-3">
-      {[
-        {
-          label: "Required",
-          value: required,
-          cls: "bg-[#e8f0ff] text-blue-600",
-        },
-        {
-          label: "Completed",
-          value: completed,
-          cls: "bg-[#f0fff4] text-[#198754]",
-        },
-        {
-          label: "Missing",
-          value: missing,
-          cls: "bg-[#fff5f5] text-[#dc3545]",
-        },
-      ].map((s) => (
-        <div key={s.label} className={`rounded-lg p-3 text-center ${s.cls}`}>
-          <div className="text-[22px] font-bold">{s.value}</div>
-          <div className="text-xs text-gray-500">{s.label}</div>
-        </div>
-      ))}
+    <div className="mb-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+        <span className="text-[13px] font-bold text-gray-900">{title}</span>
+        <span
+          className={`rounded-full px-2 py-px text-[11px] font-bold ${
+            done ? "bg-[#d1e7dd] text-[#0f5132]" : "bg-[#f8d7da] text-[#842029]"
+          }`}
+          title={`มีแล้ว ${completed} จาก ${required}`}
+        >
+          {completed}/{required}
+        </span>
+        <span
+          className={`text-xs font-semibold ${
+            done ? "text-[#198754]" : "text-[#dc3545]"
+          }`}
+        >
+          {done ? "✓ ครบ" : `ขาด ${missing}`}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1 overflow-hidden rounded bg-gray-200">
+        <div
+          className={`h-1 rounded ${done ? "bg-[#198754]" : "bg-[#dc3545]"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -307,7 +314,7 @@ function TagList({ items, cls, prefix }) {
       {items.map((t) => (
         <span
           key={t}
-          className={`rounded-md border px-2.5 py-[3px] text-xs ${cls}`}
+          className={`rounded-md border px-2 py-0.5 text-xs ${cls}`}
         >
           {prefix} {t}
         </span>
@@ -319,10 +326,10 @@ function TagList({ items, cls, prefix }) {
 function GapTrainingTags({ missing, completed }) {
   return (
     <>
-      {missing.length > 0 ? (
+      {missing.length > 0 && (
         <div>
-          <div className="mb-2 text-[13px] font-semibold text-[#dc3545]">
-            Missing Training:
+          <div className="mb-1 text-xs font-semibold text-[#dc3545]">
+            ✕ Missing ({missing.length}):
           </div>
           <TagList
             items={missing}
@@ -330,15 +337,11 @@ function GapTrainingTags({ missing, completed }) {
             cls="border-[#f5c6cb] bg-[#fff5f5] text-[#dc3545]"
           />
         </div>
-      ) : (
-        <div className="text-[13px] font-semibold text-[#198754]">
-          ✅ All training completed
-        </div>
       )}
       {completed.length > 0 && (
-        <div className="mt-3">
-          <div className="mb-2 text-[13px] font-semibold text-[#198754]">
-            Completed Training:
+        <div className={missing.length > 0 ? "mt-2" : ""}>
+          <div className="mb-1 text-xs font-semibold text-[#198754]">
+            ✓ Completed ({completed.length}):
           </div>
           <TagList
             items={completed}
@@ -352,34 +355,43 @@ function GapTrainingTags({ missing, completed }) {
 }
 
 // กรอบ modal ที่ใช้ร่วมกันทั้ง 3 ตัว
-function Modal({ maxW, title, subtitle, onClose, children }) {
+// หัว + ปุ่ม Close อยู่กับที่ เลื่อนเฉพาะเนื้อหาข้างใน (เดิมเลื่อนทั้ง modal — หัวหลุดจอ)
+function Modal({ maxW, title, subtitle, headerRight, onClose, children }) {
   return (
     <div
-      className="fixed inset-0 z-[999999] overflow-y-auto bg-black/50 p-3 sm:p-10"
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-3 sm:p-6"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className={`mx-auto overflow-hidden rounded-[10px] bg-white ${maxW}`}
+        className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-[10px] bg-white supports-[height:100dvh]:max-h-[92dvh] ${maxW}`}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-4 py-4 sm:px-6 sm:py-5">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <div className="break-words text-base font-bold">{title}</div>
+            <div className="break-words text-[15px] font-bold leading-snug">
+              {title}
+            </div>
             {subtitle}
           </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 cursor-pointer border-none bg-transparent text-xl leading-none text-gray-500"
-          >
-            ✕
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            {headerRight}
+            <button
+              onClick={onClose}
+              aria-label="ปิด"
+              className="cursor-pointer border-none bg-transparent text-xl leading-none text-gray-500 hover:text-gray-800"
+            >
+              ✕
+            </button>
+          </div>
         </div>
-        <div className="p-4 sm:p-6">{children}</div>
-        <div className="border-t border-gray-200 px-4 py-4 text-right sm:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:px-5">
+          {children}
+        </div>
+        <div className="shrink-0 border-t border-gray-200 px-4 py-2.5 text-right sm:px-5">
           <button
             onClick={onClose}
-            className="cursor-pointer rounded-lg border border-gray-200 bg-gray-500 px-6 py-2 text-[13px] text-white hover:bg-gray-600"
+            className="cursor-pointer rounded-lg border border-gray-200 bg-gray-500 px-6 py-1.5 text-[13px] text-white hover:bg-gray-600"
           >
             Close
           </button>
@@ -1120,116 +1132,138 @@ export default function ComplianceDashboard() {
       </div>
 
       {/* ════════ Gap Modal — Mandatory / Assigned / Others ════════ */}
-      {selectedGap && (
-        <Modal
-          maxW="max-w-[900px]"
-          title={`Gap Analysis — ${selectedGap.fullName}`}
-          subtitle={
-            <div className="mt-1 text-[13px] text-gray-500">
-              {selectedGap.position}
-            </div>
-          }
-          onClose={() => setSelectedGap(null)}
-        >
-          {Object.entries(selectedGap.clients).map(([clientName, client]) => {
-            const mandatory = client.mandatory ?? EMPTY_GROUP;
-            const assigned = client.assigned ?? EMPTY_GROUP;
-            const others = client.others ?? { completed: [] };
+      {selectedGap && (() => {
+        const clientEntries = Object.entries(selectedGap.clients || {});
+        const single = clientEntries.length === 1;
 
-            // % Match อิงจาก Mandatory เท่านั้น (ตรงกับคอลัมน์ CHEVRON MATCH)
-            const score =
-              mandatory.required.length > 0
-                ? Math.round(
-                    (mandatory.completed.length / mandatory.required.length) *
-                      100,
-                  )
-                : 0;
-            const scoreTone =
-              mandatory.missing.length === 0
-                ? TONE.green
-                : score >= 80
-                  ? TONE.yellow
-                  : TONE.red;
+        // % Match อิงจาก Mandatory เท่านั้น (ตรงกับคอลัมน์ CHEVRON MATCH)
+        const scoreOf = (client) => {
+          const m = client.mandatory ?? EMPTY_GROUP;
+          const score =
+            m.required.length > 0
+              ? Math.round((m.completed.length / m.required.length) * 100)
+              : 0;
+          const tone =
+            m.missing.length === 0 ? TONE.green : score >= 80 ? TONE.yellow : TONE.red;
+          return [score, tone];
+        };
+        const scorePill = (client) => {
+          const [score, tone] = scoreOf(client);
+          return (
+            <span className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold ${tone}`}>
+              {score}% Match
+            </span>
+          );
+        };
 
-            return (
-              <div
-                key={clientName}
-                className="mb-4 rounded-[10px] border border-gray-200 p-4 sm:p-5"
-              >
-                <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-bold uppercase">
-                    {clientName}
+        return (
+          <Modal
+            maxW="max-w-[900px]"
+            title={`Gap Analysis — ${selectedGap.fullName}`}
+            subtitle={
+              <div className="text-xs text-gray-500">
+                {selectedGap.position}
+                {/* client เดียว → ชื่อ client อยู่บรรทัดเดียวกับตำแหน่ง ไม่ต้องมีกรอบแยก */}
+                {single && (
+                  <span className="font-semibold uppercase text-gray-700">
+                    {" "}· {clientEntries[0][0]}
                   </span>
-                  <span
-                    className={`rounded-md px-3 py-1 text-xs font-semibold ${scoreTone}`}
-                  >
-                    {score}% Match
-                  </span>
-                </div>
-
-                {/* Mandatory */}
-                <div className="mb-6">
-                  <div className="mb-3 text-[13px] font-bold text-gray-900">
-                    🔴 Mandatory
-                  </div>
-                  <GapCountCards
-                    required={mandatory.required.length}
-                    completed={mandatory.completed.length}
-                    missing={mandatory.missing.length}
-                  />
-                  <GapTrainingTags
-                    missing={mandatory.missing}
-                    completed={mandatory.completed}
-                  />
-                </div>
-
-                {/* Assigned */}
-                <div className="mb-6">
-                  <div className="mb-3 text-[13px] font-bold text-gray-900">
-                    🟠 Assigned
-                  </div>
-                  {assigned.required.length === 0 ? (
-                    <div className="text-[13px] text-gray-500">
-                      — ไม่มี Assigned training สำหรับตำแหน่งนี้
-                    </div>
-                  ) : (
-                    <>
-                      <GapCountCards
-                        required={assigned.required.length}
-                        completed={assigned.completed.length}
-                        missing={assigned.missing.length}
-                      />
-                      <GapTrainingTags
-                        missing={assigned.missing}
-                        completed={assigned.completed}
-                      />
-                    </>
-                  )}
-                </div>
-
-                {/* Others */}
-                <div>
-                  <div className="mb-3 text-[13px] font-bold text-gray-900">
-                    ⚪ Others{" "}
-                    <span className="text-[11px] font-normal text-gray-500">
-                      (training ที่มีนอกเหนือจาก matrix ตำแหน่งนี้)
-                    </span>
-                  </div>
-                  {others.completed.length === 0 ? (
-                    <div className="text-[13px] text-gray-500">— ไม่มี</div>
-                  ) : (
-                    <TagList
-                      items={others.completed}
-                      prefix="✓"
-                      cls="border-gray-200 bg-gray-100 text-gray-700"
-                    />
-                  )}
-                </div>
+                )}
               </div>
-            );
-          })}
-        </Modal>
-      )}
+            }
+            headerRight={single ? scorePill(clientEntries[0][1]) : null}
+            onClose={() => setSelectedGap(null)}
+          >
+            {clientEntries.map(([clientName, client]) => {
+              const mandatory = client.mandatory ?? EMPTY_GROUP;
+              const assigned = client.assigned ?? EMPTY_GROUP;
+              const others = client.others ?? { completed: [] };
+
+              return (
+                <div
+                  key={clientName}
+                  className={
+                    single
+                      ? "space-y-4"
+                      : "mb-3 space-y-4 rounded-[10px] border border-gray-200 p-3 sm:p-4"
+                  }
+                >
+                  {!single && (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-bold uppercase">{clientName}</span>
+                      {scorePill(client)}
+                    </div>
+                  )}
+
+                  {/* Mandatory */}
+                  <div>
+                    <GapGroupHeader
+                      dot="bg-red-500"
+                      title="Mandatory"
+                      required={mandatory.required.length}
+                      completed={mandatory.completed.length}
+                      missing={mandatory.missing.length}
+                    />
+                    <GapTrainingTags
+                      missing={mandatory.missing}
+                      completed={mandatory.completed}
+                    />
+                  </div>
+
+                  {/* Assigned */}
+                  <div className="border-t border-gray-100 pt-3">
+                    {assigned.required.length === 0 ? (
+                      <div className="flex items-center gap-2 text-[13px]">
+                        <span className="h-2.5 w-2.5 rounded-full bg-orange-400" />
+                        <span className="font-bold">Assigned</span>
+                        <span className="text-xs text-gray-500">
+                          — ไม่มี Assigned training สำหรับตำแหน่งนี้
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <GapGroupHeader
+                          dot="bg-orange-400"
+                          title="Assigned"
+                          required={assigned.required.length}
+                          completed={assigned.completed.length}
+                          missing={assigned.missing.length}
+                        />
+                        <GapTrainingTags
+                          missing={assigned.missing}
+                          completed={assigned.completed}
+                        />
+                      </>
+                    )}
+                  </div>
+
+                  {/* Others */}
+                  <div className="border-t border-gray-100 pt-3">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-x-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+                      <span className="text-[13px] font-bold">
+                        Others ({others.completed.length})
+                      </span>
+                      <span className="text-[11px] text-gray-500">
+                        training ที่มีนอกเหนือจาก matrix ตำแหน่งนี้
+                      </span>
+                    </div>
+                    {others.completed.length === 0 ? (
+                      <div className="text-xs text-gray-500">— ไม่มี</div>
+                    ) : (
+                      <TagList
+                        items={others.completed}
+                        prefix="✓"
+                        cls="border-gray-200 bg-gray-100 text-gray-700"
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </Modal>
+        );
+      })()}
 
       {/* ════════ Alert Modal ════════ */}
       {selectedAlert && (

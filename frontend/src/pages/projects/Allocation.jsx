@@ -3064,6 +3064,29 @@ export default function Allocation() {
                 const assigned = client.assigned ?? empty;
                 const others = client.others ?? { completed: [] };
 
+                // หัวกลุ่ม: ● ชื่อ [มีแล้ว/ทั้งหมด] — แบบเดียวกับ Gap Analysis ในหน้า Compliance
+                const groupHead = (dot, title, g) => {
+                  const total = g.required.length;
+                  const done = g.missing.length === 0;
+                  return (
+                    <div className="mb-1.5 flex items-center gap-2 text-[13px]">
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} />
+                      <span className="font-bold">{title}</span>
+                      {total > 0 && (
+                        <span
+                          className={`rounded-full px-2 py-px text-[11px] font-bold ${
+                            done
+                              ? "bg-[#d1e7dd] text-[#0f5132]"
+                              : "bg-[#f8d7da] text-[#842029]"
+                          }`}
+                        >
+                          {g.completed.length}/{total}
+                        </span>
+                      )}
+                    </div>
+                  );
+                };
+
                 const renderTags = (missing, completed, groupLabel) => {
                   const allInCart =
                     missing.length > 0 &&
@@ -3206,9 +3229,7 @@ export default function Allocation() {
                     </div>
 
                     <div className="mb-3.5">
-                      <div className="mb-2.5 text-[13px] font-bold">
-                        🔴 Mandatory
-                      </div>
+                      {groupHead("bg-red-500", "Mandatory", mandatory)}
                       {renderTags(
                         mandatory.missing,
                         mandatory.completed,
@@ -3217,9 +3238,7 @@ export default function Allocation() {
                     </div>
 
                     <div className="mb-3.5">
-                      <div className="mb-2.5 text-[13px] font-bold">
-                        🟠 Assigned
-                      </div>
+                      {groupHead("bg-orange-400", "Assigned", assigned)}
                       {assigned.required.length === 0 ? (
                         <div className="text-xs text-gray-500">
                           — ไม่มี Assigned training สำหรับตำแหน่งนี้
@@ -3234,8 +3253,9 @@ export default function Allocation() {
                     </div>
 
                     <div>
-                      <div className="mb-2.5 text-[13px] font-bold">
-                        ⚪ Others{" "}
+                      <div className="mb-1.5 flex flex-wrap items-center gap-x-2 text-[13px] font-bold">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-gray-300" />
+                        Others ({others.completed.length}){" "}
                         <span className="text-[11px] font-normal text-gray-500">
                           (training ที่มีนอกเหนือจาก matrix ตำแหน่งนี้)
                         </span>
