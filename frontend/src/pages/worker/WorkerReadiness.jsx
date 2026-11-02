@@ -31,6 +31,142 @@ function BucketBadge({ bucket }) {
   );
 }
 
+// ── รายการ training: รองรับทั้งแบบชื่อ (string) และแบบ object { name, expiryDate, bucket } ──
+const itemName = (it) => (typeof it === "string" ? it : it?.name || "—");
+const itemExpiry = (it) => (typeof it === "string" ? null : it?.expiryDate || null);
+const itemBucket = (it) => (typeof it === "string" ? null : it?.bucket || null);
+
+// กลุ่ม training ตาม matrix — ชื่อกลุ่มใช้ภาษาอังกฤษเหมือนฝั่ง HR (Mandatory / Assigned)
+// พร้อมคำอธิบายภาษาไทยตัวเล็ก ให้พนักงานกับ HR พูดคำเดียวกัน
+function TrainingGroup({ title, subtitle, dot, group, fmtDate }) {
+  const [showDone, setShowDone] = useState(false);
+  const required = group?.required?.length ?? 0;
+  const completed = group?.completed ?? [];
+  const missing = group?.missing ?? [];
+  if (required === 0) return null;
+  const pct = Math.round((completed.length / required) * 100);
+  const done = missing.length === 0;
+
+  return (
+    <div className="rounded-lg border border-gray-100 p-3">
+      {/* หัวกลุ่ม: ชื่อ + จำนวน + แถบความคืบหน้า */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+            <span className={`inline-block h-2.5 w-2.5 rounded-full ${dot}`} />
+            {title}
+          </div>
+          <div className="text-[11px] text-gray-400">{subtitle}</div>
+        </div>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${
+            done ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+          }`}
+        >
+          {completed.length}/{required}
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 rounded-full bg-gray-100">
+        <div
+          className={`h-1.5 rounded-full ${done ? "bg-green-500" : "bg-red-400"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* ที่ยังขาด — แสดงเสมอ */}
+      {missing.length > 0 ? (
+        <div className="mt-3">
+          <div className="mb-1 text-[11px] font-semibold text-red-600">
+            ยังไม่มี ({missing.length}) — ติดต่อ HR เพื่อนัดอบรม
+          </div>
+          <ul className="divide-y divide-red-50 rounded-md border border-red-100 bg-red-50/40">
+            {missing.map((it, i) => (
+              <li key={i} className="flex items-start gap-2 px-2.5 py-1.5 text-xs text-red-700">
+                <span className="mt-px">✕</span>
+                <span className="min-w-0 break-words">{itemName(it)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <div className="mt-3 text-xs font-medium text-green-600">✓ ครบทุกตัว</div>
+      )}
+
+      {/* ที่มีแล้ว — พับไว้ กดดูได้ */}
+      {completed.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowDone((v) => !v)}
+            className="flex w-full items-center justify-between rounded-md px-1 py-1 text-xs font-semibold text-green-700 hover:bg-green-50"
+          >
+            <span>ที่มีแล้ว ({completed.length})</span>
+            <span>{showDone ? "ซ่อน ▴" : "ดูรายการ ▾"}</span>
+          </button>
+          {showDone && (
+            <ul className="mt-1 divide-y divide-gray-100 rounded-md border border-gray-100">
+              {completed.map((it, i) => (
+                <li key={i} className="flex items-start justify-between gap-2 px-2.5 py-1.5 text-xs">
+                  <span className="flex min-w-0 items-start gap-2 text-gray-700">
+                    <span className="mt-px text-green-600">✓</span>
+                    <span className="break-words">{itemName(it)}</span>
+                  </span>
+                  {(itemBucket(it) || itemExpiry(it)) && (
+                    <span className="shrink-0 text-right">
+                      {itemBucket(it) && itemBucket(it) !== "valid" && (
+                        <BucketBadge bucket={itemBucket(it)} />
+                      )}
+                      {itemExpiry(it) && (
+                        <div className="text-[10px] text-gray-400">
+                          หมดอายุ {fmtDate(itemExpiry(it))}
+                        </div>
+                      )}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OtherGroup({ items }) {
+  const [open, setOpen] = useState(false);
+  if (!items?.length) return null;
+  return (
+    <div className="rounded-lg border border-gray-100 p-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span>
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300" />
+            Others ({items.length})
+          </span>
+          <span className="block text-[11px] text-gray-400">
+            ใบรับรองอื่นที่มี นอกเหนือจาก matrix ตำแหน่งนี้
+          </span>
+        </span>
+        <span className="text-xs font-semibold text-gray-500">{open ? "ซ่อน ▴" : "ดูรายการ ▾"}</span>
+      </button>
+      {open && (
+        <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-100">
+          {items.map((it, i) => (
+            <li key={i} className="px-2.5 py-1.5 text-xs text-gray-700">
+              ✓ {itemName(it)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function WorkerReadiness() {
   const { backendUrl, employee } = useContext(WorkerAppContent);
 
@@ -174,52 +310,22 @@ export default function WorkerReadiness() {
           )}
 
           {activeGap && (
-            <div className="space-y-4">
-              {/* Mandatory */}
-              <div>
-                <div className="text-xs font-semibold text-gray-500 mb-2">
-                  🔴 บังคับ ({activeGap.mandatory.completed.length}/
-                  {activeGap.mandatory.required.length})
-                </div>
-                {activeGap.mandatory.missing.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {activeGap.mandatory.missing.map((name, i) => (
-                      <span
-                        key={i}
-                        className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded-md border border-red-100"
-                      >
-                        ✕ {name}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-xs text-green-600">✅ ครบทุกตัว</div>
-                )}
-              </div>
-
-              {/* Assigned */}
-              {activeGap.assigned.required.length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold text-gray-500 mb-2">
-                    🟠 ตามที่มอบหมาย ({activeGap.assigned.completed.length}/
-                    {activeGap.assigned.required.length})
-                  </div>
-                  {activeGap.assigned.missing.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeGap.assigned.missing.map((name, i) => (
-                        <span
-                          key={i}
-                          className="bg-red-50 text-red-600 text-xs px-2 py-1 rounded-md border border-red-100"
-                        >
-                          ✕ {name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-green-600">✅ ครบทุกตัว</div>
-                  )}
-                </div>
-              )}
+            <div className="space-y-3">
+              <TrainingGroup
+                title="Mandatory"
+                subtitle="บังคับตามตำแหน่ง — ต้องครบก่อนลงงาน"
+                dot="bg-red-500"
+                group={activeGap.mandatory}
+                fmtDate={fmtDate}
+              />
+              <TrainingGroup
+                title="Assigned"
+                subtitle="ตามที่บริษัทมอบหมายเพิ่ม"
+                dot="bg-orange-400"
+                group={activeGap.assigned}
+                fmtDate={fmtDate}
+              />
+              <OtherGroup items={activeGap.others?.completed} />
             </div>
           )}
         </div>
