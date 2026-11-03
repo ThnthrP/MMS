@@ -56,6 +56,8 @@ import dataImportRoutes from "./routes/dataImportRoutes.js";
 
 import { startNotificationJobs } from "./services/emailWorker.js";
 
+import integrationRoutes from "./routes/integrationRoutes.js";   // ไว้กับ import อื่นๆ
+
 // import safetyRouter from "./routes/safetyRoutes.js";
 // import medicalRouter from "./routes/medicalRoutes.js";
 // import requestRouter from "./routes/requestRoutes.js";
@@ -100,6 +102,8 @@ app.use("/api", auditTrail); // ← เพิ่ม: บันทึก audit lo
 app.get("/", (req, res) => res.send("API Working"));
 app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
+// ต้องอยู่ก่อน app.use("/api", clientTrainingRoutes) — route นั้นครอบทุก /api/* และตรวจ login ของ user
+app.use("/api/integration", integrationRoutes);
 
 // app.use("/uploads", express.static("uploads"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
