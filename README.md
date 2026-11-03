@@ -12,6 +12,10 @@ The system has two parts:
 - **Worker App (mobile-first):** used by field workers to log in with Employee
   ID + PIN, check readiness, confirm jobs, and submit requests
 
+MMS is also the source of worker, position, and project data for the
+[Personal Timesheet App (PTA)](https://github.com/ThnthrP/Personal-Timesheet-App),
+through a read-only integration API.
+
 ---
 
 ## Overview
@@ -23,12 +27,35 @@ workers, availability checks on the Manpower Calendar, training and medical
 bookings, offshore mobilization/demobilization, and post-project review,
 plus ongoing training and medical compliance tracking for every worker.
 
-**Client contracts currently supported:**
+**Clients:**
 
-| Client | Notes |
-|--------|-------|
-| Chevron | Primary active contract (Chevron Training Matrix) |
-| Others | Additional clients can be added via `Client` / `Contract` records |
+| Client | Status |
+|--------|--------|
+| Chevron | Live: training matrix, records, and % match in production use |
+| Other clients | Supported by the data model; waiting for HR to map each client's course names to the shared catalog |
+
+### Multi-client training model
+
+The training data is client-agnostic, so one certificate record can be
+checked against any client's requirements:
+
+```
+GlobalTraining        one canonical course (e.g. "BOSIET"), shared by all clients
+ ├─ TrainingStandard  provider, hours, validity (per source / client)
+ ├─ ClientTraining    the name a client's matrix uses for that course (alias), per contract
+ │   └─ PositionRequirement   position × course × contract: Mandatory / Relevant / Assigned
+ └─ EmployeeTraining  each worker's certificate, linked to the canonical course
+```
+
+- HR Excel files and client matrices use different names for the same course.
+  They are mapped once to a `GlobalTraining`, and the original name is kept
+  (`rawTrainingName`, `nameAlias`) for audit
+- **% match** is computed per contract: the worker's valid certificates against
+  that contract's Mandatory requirements, so the same worker can be scored for
+  any client
+- Adding a client means adding its `Client` / `Contract`, linking its course
+  names to the catalog, and entering its position matrix. No code change is
+  needed
 
 ---
 
@@ -69,6 +96,11 @@ The assigned list opens from the position header, with colored counts for
 Approved / awaiting approval / awaiting PE / rejected by PE.
 ![Assign Names](screenshots/allocation.png)
 
+#### 🔍 Gap Analysis
+Per-worker check against the contract's requirements: Mandatory, Assigned,
+and other courses, each with completed and missing items.
+![Gap Analysis](screenshots/gap-analysis.png)
+
 #### ✅ PE Approvals
 Workers below 100% match, grouped by project and position, approved or rejected by the Project Engineer.
 ![PE Approvals](screenshots/pe-approvals.png)
@@ -78,7 +110,7 @@ Projects with staffing progress and each worker's timeline, used to check availa
 ![Manpower Calendar](screenshots/manpower-calendar.png)
 
 #### 🧭 Manpower Calendar › Requirement Detail
-One page per requirement: an 11-step timeline (Requirement → Review) computed
+One page per requirement: a 10-step timeline (Requirement → Review) computed
 from work done in the other menus, the per-worker work calendar (rest days,
 MOB, D-MOB, failed Check In), tabs for team status / Check In / Rest Day /
 reviewers, and a history panel of who did what and when.
@@ -116,6 +148,12 @@ Position requests, employee timeline, and PE ↔ Manpower discussion with attach
 #### 🧩 Training Matrix
 Position-to-training requirements per contract (Mandatory / Assigned).
 ![Training Matrix](screenshots/training-matrix.png)
+
+#### 📚 Trainings (shared course catalog)
+One canonical name per course with the names HR uses in its files. "View list"
+groups each course's certificates by the name in the source file, and
+certificates filed under the wrong course can be moved.
+![Trainings](screenshots/trainings.png)
 
 ### Admin
 
@@ -219,9 +257,9 @@ shown at the top of the page.
 - **Manpower Calendar:** in-progress / upcoming / completed requirements with
   the current step and progress dots, used to check availability before
   assigning names. The detail page shows:
-  - *Timeline (11 steps):* Requirement → Assign Names → Approval → Worker
-    Confirm → Training & Medical → Pre-Field Training → Travel Booking →
-    Check In → MOB → D-MOB → Review. Each step is computed from data in the
+  - *Timeline (10 steps, following the ISO work procedure):* Requirement →
+    Assign Names → Approval → Worker Confirm → Training & Medical → Pre-Field
+    Training → Check In → MOB → D-MOB → Review. Each step is computed from data in the
     other menus (no manual status), shows its progress, explains on hover
     where it is done, and links to that page. Red = a worker declined or
     failed Check In; dashed = no records, skipped
@@ -252,7 +290,10 @@ shown at the top of the page.
 - **Training Matrix:** position-to-training requirements per contract
   (Mandatory / Assigned), Matrix Editor, and the central `GlobalTraining`
   catalog with per-client `TrainingStandard` and expiry buckets (Expired /
-  Critical / Warning / Upcoming / Valid)
+  Critical / Warning / Upcoming / Valid). See
+  [Multi-client training model](#multi-client-training-model)
+- **Trainings:** canonical course names with the alias names used in HR files;
+  review certificates grouped by source name and move misfiled ones
 - **Departments:** department list used across worker records
 
 ### Worker App
@@ -281,6 +322,15 @@ shown at the top of the page.
   - Columns are found by header text, unchanged dates are skipped, blank
     cells never erase existing data, and files are processed in memory only
 - **Notifications:** in-app notification bell with links to related pages
+- **Email notifications (phase 1, off by default):** urgent events (worker
+  declined a job, no response by the deadline, failed Check In, PE approval
+  requested) are queued in `EmailOutbox` and sent by a background worker with
+  retries and de-duplication. Emails never contain health values, passwords,
+  or PINs. Turn on with `EMAIL_ENABLED=true`
+- **Integration API (PTA):** `GET /api/integration/pta/master-data` returns
+  positions, active workers (ID, code, name, position), and active projects
+  with an ON code. It uses a service token (`PTA_SERVICE_TOKEN`), not a user
+  login, and is mounted before the user-auth routes in `server.js`
 - **Standard links:** navigation uses real links, so right-click
   "Open link in new tab" works throughout the app
 
@@ -369,8 +419,9 @@ MMS/
 ├── backend/
 │   ├── controllers/
 │   ├── services/                  # supervisorService = Manpower Calendar timeline + history
+│   │                              # notifyService, emailTemplates, emailWorker = email notifications
 │   ├── routes/
-│   ├── middleware/                # userAuth, workerAuth, auditTrail
+│   ├── middleware/                # userAuth, workerAuth, auditTrail, serviceAuth (integration token)
 │   ├── utils/                     # roles, expiryStatus, auditLogger
 │   ├── prisma/
 │   │   ├── schema.prisma
@@ -483,7 +534,22 @@ CLIENT_URL=http://localhost:5175
 
 # Optional: delete audit log entries older than N days (unset = keep forever)
 AUDIT_RETENTION_DAYS=730
+
+# Email (SMTP relay)
+SMTP_USER=...
+SMTP_PASS=...
+SENDER_EMAIL=...
+EMAIL_ENABLED=false                 # true = send queued emails
+APP_BASE_URL=http://localhost:5175  # links inside emails
+# EMAIL_FROM="MMS System <...>"     # optional sender name
+# EMAIL_REDIRECT_TO=you@example.com # dev/test: deliver every email here instead
+
+# Integration: token PTA sends to read master data (unset = endpoint off, 503)
+PTA_SERVICE_TOKEN=
 ```
+
+> Generate tokens with `openssl rand -hex 32`. Use a different value on each
+> server, and never commit `.env` or share its values in chat or screenshots.
 
 **`frontend/.env`**
 
