@@ -145,8 +145,8 @@ export default function ProjectsOverview() {
       <div className="pb-3">
         <h1 className="m-0 text-lg font-bold">Manpower Calendar</h1>
         <div className="text-xs text-gray-500">
-          ติดตามทุก requirement ว่าอยู่ขั้นตอนไหน · กดแถวเพื่อดู timeline
-          ขั้นตอนและตารางวันทำงานรายคน
+          ติดตามทุก requirement ว่าอยู่ขั้นตอนไหน · กด View (หรือกดที่แถว) เพื่อดู
+          timeline ขั้นตอนและตารางวันทำงานรายคน
         </div>
       </div>
 
@@ -311,8 +311,11 @@ export default function ProjectsOverview() {
                       {p.location ? ` · ${p.location}` : ""} ·{" "}
                       {fmtShort(p.startDate)} – {fmtShort(p.endDate)} · {need} คน
                     </div>
-                    <div className="mt-2">
+                    <div className="mt-2 flex items-center justify-between gap-2">
                       <StageDots stages={p.stages} />
+                      <span className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                        View →
+                      </span>
                     </div>
                   </div>
                 );
@@ -332,6 +335,7 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
+                    <th className={`${TH} w-[110px] text-center`}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -379,6 +383,16 @@ export default function ProjectsOverview() {
                         </td>
                         <td className={TD}>
                           <StageDots stages={p.stages} />
+                        </td>
+                        <td className={`${TD} whitespace-nowrap text-center`}>
+                          <Link
+                            to={`/projects-overview/${p.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title="ดู timeline ขั้นตอน + ตารางวันทำงานรายคน"
+                            className="inline-block rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            View →
+                          </Link>
                         </td>
                       </tr>
                     );
