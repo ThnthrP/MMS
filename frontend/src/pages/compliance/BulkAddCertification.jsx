@@ -354,17 +354,22 @@ export default function BulkAddCertification() {
         <div className="min-w-0">
           <button
             type="button"
-            onClick={() => navigate("/requests-history")}
+            onClick={() =>
+              window.history.length > 1
+                ? navigate(-1)
+                : navigate("/requests-history")
+            }
             disabled={applying}
             className="mb-1 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-500 hover:text-gray-800 disabled:cursor-not-allowed"
           >
-            ← Training Bookings
+            ← ย้อนกลับ
           </button>
           <h1 className="m-0 text-lg font-bold">
             บันทึกผลอบรม (Bulk Add Certification)
           </h1>
           <div className="text-xs text-gray-500">
-            อบรมรอบเดียวกันเสร็จแล้ว → เพิ่ม certification ให้พนักงานทั้งกลุ่มทีเดียว
+            อบรมรอบเดียวกันเสร็จแล้ว → เพิ่ม certification
+            ให้พนักงานทั้งกลุ่มทีเดียว
           </div>
         </div>
       </div>

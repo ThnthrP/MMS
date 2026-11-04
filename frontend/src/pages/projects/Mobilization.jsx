@@ -155,6 +155,8 @@ const INPUT =
   "box-border w-full min-w-0 min-h-[34px] appearance-none rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 [&::-webkit-date-and-time-value]:text-left";
 const LABEL_SM =
   "mb-1 block text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500";
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
 const SEG_BTN =
   "flex-1 cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
 const LIFT_RED =
@@ -195,9 +197,12 @@ const projectSelectStyles = {
 const positionSelectStyles = {
   control: (b) => ({
     ...b,
-    minHeight: "36px",
+    minHeight: "40px",
     fontSize: "13px",
     borderRadius: "8px",
+    borderColor: "#ced4da",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
   }),
   option: (b) => ({ ...b, fontSize: "13px" }),
   menuPortal: (b) => ({ ...b, zIndex: 9999 }),
@@ -607,7 +612,7 @@ export default function Mobilization() {
   const [bulkEntries, setBulkEntries] = useState({});
   const [bulkDraft, setBulkDraft] = useState({});
   const [applyingBulk, setApplyingBulk] = useState(false);
-  const [bulkExpanded, setBulkExpanded] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   // ── Checklist modal ──
   const [checklistModal, setChecklistModal] = useState(null); // row object
@@ -677,8 +682,14 @@ export default function Mobilization() {
       setProject(data.project);
       // ไม่บังคับ — โหลดไม่ได้ก็แค่ไม่แสดงแถบเตือน
       axios
-        .get(`${backendUrl}/api/supervisor/projects-overview/${projectId}`, { withCredentials: true })
-        .then((r) => reqId === fetchReqRef.current && setOrphans(r.data?.orphanAssignments ?? []))
+        .get(`${backendUrl}/api/supervisor/projects-overview/${projectId}`, {
+          withCredentials: true,
+        })
+        .then(
+          (r) =>
+            reqId === fetchReqRef.current &&
+            setOrphans(r.data?.orphanAssignments ?? []),
+        )
         .catch(() => setOrphans([]));
       setPositionSummary(data.positionSummary ?? []);
 
@@ -762,10 +773,20 @@ export default function Mobilization() {
       else if (liftBanModal && !lifting) setLiftBanModal(null);
       else if (banModal && !banning) setBanModal(null);
       else if (checklistModal) setChecklistModal(null);
+      else if (bulkOpen && !applyingBulk) setBulkOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [previewPhoto, liftBanModal, lifting, banModal, banning, checklistModal]);
+  }, [
+    previewPhoto,
+    liftBanModal,
+    lifting,
+    banModal,
+    banning,
+    checklistModal,
+    bulkOpen,
+    applyingBulk,
+  ]);
 
   // ===========================================================
   // Checklist task
@@ -1038,23 +1059,35 @@ export default function Mobilization() {
     }));
 
   const applyBulkTrainingToAll = async () => {
-    if (!project || rows.length === 0 || applyingBulk) return;
+    if (!project || bulkTargets.length === 0 || applyingBulk) return;
+
+    // รวมข้อความที่พิมพ์ค้างไว้ (ยังไม่ได้กด + เพิ่ม) เข้าไปด้วย
+    const merged = Object.fromEntries(
+      TRAINING_TOPICS.map((t) => {
+        const draft = (bulkDraft[t] || "").trim();
+        const list = bulkEntries[t] || [];
+        return [t, draft ? [...list, draft] : list];
+      }),
+    );
+
     if (
       !window.confirm(
-        `บันทึกหัวข้ออบรมนี้ให้พนักงานทั้งหมด ${rows.length} คน?\n` +
+        `บันทึกหัวข้ออบรมนี้ให้พนักงานที่ยังไม่ Deploy ${bulkTargets.length} คน?\n` +
           `(จะเขียนทับหัวข้ออบรมเดิม และตั้งสถานะเป็น Pass ให้ทุกคน)`,
       )
     )
       return;
 
     const itemsChecked = Object.fromEntries(
-      TRAINING_TOPICS.map((t) => [t, { entries: bulkEntries[t] || [] }]),
+      TRAINING_TOPICS.map((t) => [t, { entries: merged[t] }]),
     );
 
     try {
       setApplyingBulk(true);
+      setBulkEntries(merged);
+      setBulkDraft({});
       await Promise.all(
-        rows.map((r) => {
+        bulkTargets.map((r) => {
           const task = r.checklist?.find(
             (t) => t.taskType === "pre_field_training",
           );
@@ -1067,7 +1100,8 @@ export default function Mobilization() {
         }),
       );
       await fetchList(project.id);
-      alert("บันทึกหัวข้ออบรม + ตั้งสถานะ Pass ให้ทุกคนเรียบร้อยแล้ว ✓");
+      setBulkOpen(false);
+      alert("บันทึกหัวข้ออบรม + ตั้งสถานะ Pass เรียบร้อยแล้ว ✓");
     } catch (err) {
       console.error(err);
       alert(errMsg(err, "บันทึกไม่สำเร็จ"));
@@ -1075,7 +1109,6 @@ export default function Mobilization() {
       setApplyingBulk(false);
     }
   };
-
   // ===========================================================
   // Derived
   // ===========================================================
@@ -1098,6 +1131,9 @@ export default function Mobilization() {
     [rows],
   );
   const allDeployed = rows.length > 0 && rows.every((r) => r.deployed);
+
+  // หัวข้ออบรม (ทั้งหมด) — เฉพาะคนที่ยังไม่ Deploy (คนที่ส่งไปแล้ว checklist ถูกล็อก)
+  const bulkTargets = useMemo(() => rows.filter((r) => !r.deployed), [rows]);
 
   const positionFilterOptions = useMemo(() => {
     const opts = positionSummary
@@ -1740,13 +1776,11 @@ export default function Mobilization() {
         </div>
       </div>
 
-      {/* ════════ เลือก Project ════════ */}
+      {/* ════════ เลือก Project · ตำแหน่ง · Deploy (แถวเดียว) ════════ */}
       <div className="border-y border-gray-200 py-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:min-w-[280px] sm:max-w-[700px] sm:flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
-              Select Project
-            </label>
+            <label className={FILTER_LABEL}>Select Project</label>
             <Select
               options={projectOptions}
               styles={projectSelectStyles}
@@ -1768,66 +1802,27 @@ export default function Mobilization() {
             />
           </div>
 
-          {selectedProjectId && isAdmin && (
-            <button
-              type="button"
-              onClick={clearProjectDeployments}
-              disabled={clearing}
-              title="Dev tool — ลบ deployment record ทั้งหมดของ project นี้"
-              className={`w-full cursor-pointer whitespace-nowrap rounded-lg border-none px-3.5 py-2.5 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${LIFT_DANGER}`}
-            >
-              {clearing ? "Clearing..." : "🧹 Clear Deployments (Dev)"}
-            </button>
-          )}
-        </div>
-
-        {project && (
-          <div className="mt-2.5 text-xs text-gray-500">
-            Start (default MOB):{" "}
-            <strong>{ymd(project.startDate) || "—"}</strong> · D-MOB = MOB +{" "}
-            {DEMOB_DAYS} วัน
-          </div>
-        )}
-      </div>
-
-      {/* ════════ deploy ค้าง (ไม่ได้ Approve แล้ว) ════════ */}
-      {project && orphans.length > 0 && (
-        <div className="mt-3 border-l-[3px] border-[#dc3545] bg-[#fff5f5] px-3 py-2.5 text-[13px]">
-          <div className="font-semibold text-[#842029]">
-            ⚠ Deploy ค้าง {orphans.length} คน — ไม่ได้ Approve แล้ว จึงไม่อยู่ในตารางด้านล่าง
-          </div>
-          <div className="mb-1.5 text-xs text-gray-600">
-            ยังมีข้อมูลลงงานในโปรเจกต์นี้ (ขึ้นใน Manpower Calendar) — กด Undeploy เพื่อลบ
-          </div>
-          {orphans.map((o) => (
-            <div key={o.employeeId} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#f5c2c7] py-1.5">
-              <span className="font-semibold">{o.fullName}</span>
-              <span className="text-xs text-gray-500">
-                {o.empId || o.empCode} · MOB {o.mobDate ? ymd(o.mobDate) : "—"} · D-MOB {o.demobDate ? ymd(o.demobDate) : "—"}
-              </span>
-              {canManageMobilization && (
-                <button
-                  type="button"
-                  onClick={() => undeployRow(o.employeeId)}
-                  className="ml-auto cursor-pointer rounded-md border border-[#dc3545] bg-white px-3 py-1 text-xs font-semibold text-[#dc3545] hover:bg-red-50"
-                >
-                  Undeploy
-                </button>
-              )}
+          {hasRows && showPositionFilter && (
+            <div className="w-full sm:w-[300px]">
+              <label className={FILTER_LABEL}>Position Request</label>
+              <Select
+                options={positionFilterOptions}
+                value={positionFilterOptions.find(
+                  (o) => o.value === positionFilter,
+                )}
+                onChange={(o) => setPositionFilter(o ? o.value : "all")}
+                styles={positionSelectStyles}
+                menuPortalTarget={
+                  typeof document !== "undefined" ? document.body : null
+                }
+                menuPosition="fixed"
+                isSearchable={false}
+              />
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* ════════ Step 10–11 ════════ */}
-      <div className={CARD}>
-        <div className="flex flex-col gap-3 border-b border-gray-200 py-3.5 text-sm font-bold lg:flex-row lg:items-center lg:justify-between">
-          <span>
-            Step 10–11: Checklist (PPE · Safety Induction · Medical Fit) →
-            Deploy
-          </span>
           {hasRows && (
-            <span className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:pb-1.5">
               <Badge tone="ok">{deployedCount} deployed</Badge>
               <Badge tone="info">{readyCount} ready</Badge>
               {canManageMobilization && (
@@ -1852,39 +1847,90 @@ export default function Mobilization() {
                   ✅ Deploy ครบแล้ว — ดูสรุป Project →
                 </Link>
               )}
-            </span>
+            </div>
+          )}
+
+          {selectedProjectId && isAdmin && (
+            <button
+              type="button"
+              onClick={clearProjectDeployments}
+              disabled={clearing}
+              title="Dev tool — ลบ deployment record ทั้งหมดของ project นี้"
+              className={`w-full cursor-pointer whitespace-nowrap rounded-lg border-none px-3.5 py-2.5 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${LIFT_DANGER}`}
+            >
+              {clearing ? "Clearing..." : "🧹 Clear Deployments (Dev)"}
+            </button>
           )}
         </div>
 
-        {/* ── สรุปตามตำแหน่ง: การ์ดละตำแหน่ง กดเพื่อกรองได้ ── */}
-        {hasRows && positionSummary.length > 0 && (
-          <div className="border-b border-gray-100 py-3">
-            <div className="mb-2.5 flex flex-wrap items-end gap-3">
-              {showPositionFilter && (
-                <div className="w-full sm:w-[320px]">
-                  <label className={LABEL_SM}>Filter by Position Request</label>
-                  <Select
-                    options={positionFilterOptions}
-                    value={positionFilterOptions.find(
-                      (o) => o.value === positionFilter,
-                    )}
-                    onChange={(o) => setPositionFilter(o ? o.value : "all")}
-                    styles={positionSelectStyles}
-                    menuPortalTarget={
-                      typeof document !== "undefined" ? document.body : null
-                    }
-                    menuPosition="fixed"
-                    isSearchable={false}
-                  />
-                </div>
-              )}
-              {positionSummary.every((p) => p.deployedCount >= p.quantity) && (
-                <span className="pb-2 text-xs font-semibold text-emerald-800">
+        {project && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-gray-500">
+            <span>
+              Start (default MOB):{" "}
+              <strong>{ymd(project.startDate) || "—"}</strong> · D-MOB = MOB +{" "}
+              {DEMOB_DAYS} วัน
+            </span>
+            {hasRows &&
+              positionSummary.length > 0 &&
+              positionSummary.every((p) => p.deployedCount >= p.quantity) && (
+                <span className="font-semibold text-emerald-800">
                   ✅ Deploy ครบทุกตำแหน่งแล้ว
                 </span>
               )}
-            </div>
+            {hasRows && (
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                aria-haspopup="dialog"
+                className={`ml-auto cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
+              >
+                🦺 หัวข้ออบรม (ทั้งหมด)
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
+      {/* ════════ deploy ค้าง (ไม่ได้ Approve แล้ว) ════════ */}
+      {project && orphans.length > 0 && (
+        <div className="mt-3 border-l-[3px] border-[#dc3545] bg-[#fff5f5] px-3 py-2.5 text-[13px]">
+          <div className="font-semibold text-[#842029]">
+            ⚠ Deploy ค้าง {orphans.length} คน — ไม่ได้ Approve แล้ว
+            จึงไม่อยู่ในตารางด้านล่าง
+          </div>
+          <div className="mb-1.5 text-xs text-gray-600">
+            ยังมีข้อมูลลงงานในโปรเจกต์นี้ (ขึ้นใน Manpower Calendar) — กด
+            Undeploy เพื่อลบ
+          </div>
+          {orphans.map((o) => (
+            <div
+              key={o.employeeId}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#f5c2c7] py-1.5"
+            >
+              <span className="font-semibold">{o.fullName}</span>
+              <span className="text-xs text-gray-500">
+                {o.empId || o.empCode} · MOB {o.mobDate ? ymd(o.mobDate) : "—"}{" "}
+                · D-MOB {o.demobDate ? ymd(o.demobDate) : "—"}
+              </span>
+              {canManageMobilization && (
+                <button
+                  type="button"
+                  onClick={() => undeployRow(o.employeeId)}
+                  className="ml-auto cursor-pointer rounded-md border border-[#dc3545] bg-white px-3 py-1 text-xs font-semibold text-[#dc3545] hover:bg-red-50"
+                >
+                  Undeploy
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ════════ Step 10–11 ════════ */}
+      <div className={CARD}>
+        {/* ── สรุปตามตำแหน่ง: การ์ดละตำแหน่ง กดเพื่อกรองได้ ── */}
+        {hasRows && positionSummary.length > 0 && (
+          <div className="border-b border-gray-100 py-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
               {positionSummary.map((p) => (
                 <PositionCard
@@ -1903,66 +1949,6 @@ export default function Mobilization() {
                   }
                 />
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── หัวข้ออบรม (ทั้งหมด) ── */}
-        {hasRows && (
-          <div className="border-b border-gray-100 py-2.5">
-            <button
-              type="button"
-              onClick={() => setBulkExpanded((v) => !v)}
-              aria-expanded={bulkExpanded}
-              className={`cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT} ${
-                bulkExpanded ? "bg-blue-100 ring-2 ring-blue-500/30" : ""
-              }`}
-            >
-              🦺 หัวข้ออบรม (ทั้งหมด) {bulkExpanded ? "▲" : "▼"}
-            </button>
-          </div>
-        )}
-
-        {hasRows && bulkExpanded && (
-          <div className="border-b border-gray-200 bg-gray-50 px-3 py-4">
-            <div className="mb-3 text-xs text-gray-500">
-              กรอกหัวข้อย่อยครั้งเดียว แล้วกด Apply
-              เพื่อบันทึกให้พนักงานทุกคนในรายการนี้
-            </div>
-            <div className="mb-3.5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {TRAINING_TOPICS.map((topic) => (
-                <div key={topic}>
-                  <div className="mb-1.5 text-xs font-semibold text-gray-700">
-                    {topic}
-                  </div>
-                  <EntryList
-                    white
-                    entries={bulkEntries[topic] || []}
-                    canEdit
-                    onRemove={(idx) => removeBulkEntry(topic, idx)}
-                  />
-                  <AddEntry
-                    value={bulkDraft[topic] ?? ""}
-                    placeholder="ระบุหัวข้อย่อย..."
-                    onChange={(v) =>
-                      setBulkDraft((prev) => ({ ...prev, [topic]: v }))
-                    }
-                    onAdd={() => addBulkEntry(topic)}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={applyBulkTrainingToAll}
-                disabled={applyingBulk}
-                className="w-full cursor-pointer rounded-lg border-none bg-blue-600 px-[18px] py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-              >
-                {applyingBulk
-                  ? "กำลังบันทึก..."
-                  : `บันทึก + Apply ให้ทั้งหมด (${rows.length} คน)`}
-              </button>
             </div>
           </div>
         )}
@@ -1988,10 +1974,7 @@ export default function Mobilization() {
             <div className="flex flex-col divide-y divide-gray-100 lg:hidden">
               {filteredRows.map((r) => {
                 return (
-                  <div
-                    key={r.employeeId}
-                    className="bg-white py-3.5"
-                  >
+                  <div key={r.employeeId} className="bg-white py-3.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 text-sm">
                         {renderWorkerInfo(r)}
@@ -2107,6 +2090,73 @@ export default function Mobilization() {
           </>
         )}
       </div>
+
+      {/* ════════ หัวข้ออบรม (ทั้งหมด) ════════ */}
+      {bulkOpen && hasRows && (
+        <Modal
+          onClose={() => !applyingBulk && setBulkOpen(false)}
+          maxW="max-w-[860px]"
+        >
+          <ModalHead
+            title="🦺 หัวข้ออบรมก่อนปฏิบัติงาน (ทั้งหมด)"
+            sub={`กรอกครั้งเดียว แล้ว Apply ให้พนักงานที่ยังไม่ Deploy (${bulkTargets.length} คน)`}
+            onClose={applyingBulk ? undefined : () => setBulkOpen(false)}
+          />
+
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+            <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+              {TRAINING_TOPICS.map((topic) => (
+                <div key={topic} className="min-w-0">
+                  <div className="mb-1.5 text-xs font-semibold text-gray-700">
+                    {topic}
+                  </div>
+                  <EntryList
+                    white
+                    entries={bulkEntries[topic] || []}
+                    canEdit={!applyingBulk}
+                    onRemove={(idx) => removeBulkEntry(topic, idx)}
+                  />
+                  <AddEntry
+                    value={bulkDraft[topic] ?? ""}
+                    disabled={applyingBulk}
+                    placeholder="ระบุหัวข้อย่อย..."
+                    onChange={(v) =>
+                      setBulkDraft((prev) => ({ ...prev, [topic]: v }))
+                    }
+                    onAdd={() => addBulkEntry(topic)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-gray-200 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <span className="text-[11px] text-gray-500">
+              ⚠ จะเขียนทับหัวข้ออบรมเดิม และตั้งสถานะ Pass ให้ทุกคน
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkOpen(false)}
+                disabled={applyingBulk}
+                className={`${BTN_OUTLINE} flex-1 sm:flex-none`}
+              >
+                ปิด
+              </button>
+              <button
+                type="button"
+                onClick={applyBulkTrainingToAll}
+                disabled={applyingBulk || bulkTargets.length === 0}
+                className="flex-1 cursor-pointer rounded-lg border-none bg-blue-600 px-[18px] py-2 text-[13px] font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+              >
+                {applyingBulk
+                  ? "กำลังบันทึก..."
+                  : `บันทึก + Apply (${bulkTargets.length} คน)`}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* ════════ Pre-Mob Checklist ════════ */}
       {checklistModal && (

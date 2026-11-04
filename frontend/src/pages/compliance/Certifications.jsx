@@ -2,7 +2,7 @@ import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import RequestBookingModal from "./RequestBookingModal";
 import {
   buildWorkerOptions,
@@ -129,6 +129,17 @@ function CertDate({ hasRecord, value, emptyLabel }) {
 export default function Certifications() {
   const { backendUrl } = useContext(AppContent);
   const [searchParams] = useSearchParams();
+
+  const navigate = useNavigate();
+
+  // ไปหน้าบันทึกผลอบรม โดยเลือกหลักสูตร + พนักงานที่ติ๊กไว้ให้แล้ว
+  const goBulkAdd = () => {
+    const qs = new URLSearchParams({
+      trainingId: selectedTraining.value,
+      empIds: selectedEmployeeIds.join(","),
+    });
+    navigate(`/certifications/bulk-add?${qs}`);
+  };
 
   // สิทธิ์ถูกคุมที่ AppRouter แล้ว
   const canRequestTraining = true;
@@ -442,19 +453,33 @@ export default function Certifications() {
                 </span>
               ) : (
                 <span className="text-[13px] text-gray-600">
-                  ติ๊ก ☐ หน้าชื่อพนักงาน (หรือคลิกที่แถว) เพื่อเลือกคนที่ต้องการให้
-                  HR จัดอบรม — ☐ <strong>เลือกทั้งหมด</strong> ที่หัวตาราง =
+                  ติ๊ก ☐ หน้าชื่อพนักงาน (หรือคลิกที่แถว) แล้วเลือก{" "}
+                  <strong>เพิ่ม training ใน CV</strong> (อบรมผ่านแล้ว) หรือ{" "}
+                  <strong>แจ้ง HR ให้จัด Training</strong> (ยังไม่ได้อบรม) — ☐{" "}
+                  <strong>เลือกทั้งหมด</strong> ที่หัวตาราง =
                   ทุกคนที่แสดงอยู่ตาม filter
                 </span>
               )}
               {/* เปิดการ์ด Request training ที่กรอกหลักสูตร + คนไว้ให้แล้ว — ใส่วันที่ / สถานที่ต่อได้ */}
-              <button
-                onClick={() => setRequestOpen(true)}
-                disabled={selectedEmployeeIds.length === 0}
-                className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                📢 แจ้ง HR ให้จัด Training
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={goBulkAdd}
+                  disabled={selectedEmployeeIds.length === 0}
+                  title="อบรมผ่านแล้ว → บันทึก certification เข้าประวัติพนักงาน"
+                  className="cursor-pointer rounded-lg border border-[#198754] bg-white px-4 py-2 text-[13px] font-semibold text-[#198754] hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ✓ เพิ่ม training ใน CV ของพนักงาน
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequestOpen(true)}
+                  disabled={selectedEmployeeIds.length === 0}
+                  className="cursor-pointer rounded-lg border-none bg-[#664d03] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#523e02] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  📢 แจ้ง HR ให้จัด Training
+                </button>
+              </div>
             </div>
           )}
 
@@ -610,7 +635,9 @@ export default function Certifications() {
                           toggleEmployee(w.employeeId)
                         }
                         className={`border-b border-gray-100 ${rowBg(w)} ${
-                          canRequestTraining ? "cursor-pointer hover:bg-gray-50" : ""
+                          canRequestTraining
+                            ? "cursor-pointer hover:bg-gray-50"
+                            : ""
                         }`}
                       >
                         {canRequestTraining && (
@@ -683,7 +710,9 @@ export default function Certifications() {
           onSent={(n) => {
             setRequestOpen(false);
             setSelectedEmployeeIds([]);
-            alert(`แจ้ง HR ให้จัด training ให้ ${n} คนแล้ว — ดูสถานะที่ Training Bookings`);
+            alert(
+              `แจ้ง HR ให้จัด training ให้ ${n} คนแล้ว — ดูสถานะที่ Training Bookings`,
+            );
           }}
         />
       )}
