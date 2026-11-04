@@ -436,7 +436,7 @@ export default function ManpowerRequirements() {
               <th className={TH}>STATUS</th>
               <th className={TH}>REQUESTED BY</th>
               <th className={TH}>FILLED BY</th>
-              <th className={`${TH} text-right`} />
+              <th className={`${TH} w-[100px] text-center`}>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
@@ -469,10 +469,12 @@ export default function ManpowerRequirements() {
                   <tr
                     key={r.id}
                     onClick={() => navigate(`/projects/${r.projectId}`)}
-                    className={`cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${ended ? "opacity-70" : ""}`}
+                    className={`group cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${ended ? "opacity-70" : ""}`}
                   >
                     <td className={TD}>
-                      <div className="font-semibold text-gray-900">{r.position || "—"}</div>
+                      <div className="font-semibold text-gray-900 group-hover:text-blue-700 group-hover:underline">
+                        {r.position || "—"}
+                      </div>
                       <div className="truncate text-[11px] text-gray-600" title={`${r.projectCode || ""} – ${r.jobTitle || ""}`}>
                         {r.projectCode && <span className="font-mono text-blue-700">{r.projectCode}</span>}
                         {r.projectCode && " – "}
@@ -543,15 +545,26 @@ export default function ManpowerRequirements() {
                         <span className="text-gray-300">—</span>
                       )}
                     </td>
-                    <td className={`${TD} whitespace-nowrap text-right`}>
-                      <Link
-                        to={`/allocation?projectId=${r.projectId}`}
-                        onClick={(e) => e.stopPropagation()}
-                        title="จัดรายชื่อที่หน้า Assign Names"
-                        className="rounded-md border border-[#a3cfbb] bg-[#e8f5ee] px-2.5 py-1 text-xs font-semibold text-[#146c43] no-underline hover:bg-[#198754] hover:text-white"
-                      >
-                        Assign →
-                      </Link>
+                    <td className={`${TD} whitespace-nowrap`}>
+                      {/* View = หน้ารายละเอียด requirement (ProjectDetail) · Assign = จัดรายชื่อ */}
+                      <div className="flex flex-col items-stretch gap-1">
+                        <Link
+                          to={`/projects/${r.projectId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title="ดูรายละเอียด requirement — แก้จำนวน / เพิ่มตำแหน่ง / คุยกับ PE"
+                          className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-center text-xs font-semibold text-gray-700 no-underline hover:border-gray-400 hover:bg-gray-50"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          to={`/allocation?projectId=${r.projectId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title="จัดรายชื่อที่หน้า Assign Names"
+                          className="rounded-md border border-[#a3cfbb] bg-[#e8f5ee] px-2.5 py-1 text-center text-xs font-semibold text-[#146c43] no-underline hover:bg-[#198754] hover:text-white"
+                        >
+                          Assign →
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );
