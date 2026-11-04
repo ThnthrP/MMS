@@ -1,5 +1,6 @@
 import * as service from "../services/complianceService.js";
-import { notifyRole } from "../services/notificationService.js";
+import { notifyRoles } from "../services/notificationService.js";
+import { ROLE_GROUPS } from "../utils/roles.js";
 
 export async function getComplianceDashboard(req, res) {
   try {
@@ -58,14 +59,6 @@ export async function getCertificationDetail(req, res) {
   }
 }
 
-// ── กลุ่ม role ที่ต้องได้รับแจ้งเตือนเรื่อง training request ──
-// (แก้ตรงนี้ที่เดียวถ้าในอนาคตมี role HR เพิ่ม/ลด)
-const TRAINING_REQUEST_NOTIFY_ROLES = [
-  "hr_officer",
-  "hr_supervisor",
-  "training_officer",
-];
-
 export async function requestTraining(req, res) {
   try {
     const { trainingId, employeeIds } = req.body;
@@ -85,12 +78,10 @@ export async function requestTraining(req, res) {
       link: `/certifications?trainingId=${trainingId}&empIds=${employeeIds.join(",")}`,
     };
 
-    Promise.all(
-      TRAINING_REQUEST_NOTIFY_ROLES.map((role) =>
-        notifyRole(role, payload).catch((err) =>
-          console.error(`notifyRole (${role}) failed:`, err),
-        ),
-      ),
+    notifyRoles(ROLE_GROUPS.HR, payload, {
+      excludeUserIds: [req.user.id],
+    }).catch((err) =>
+      console.error("notifyRoles (training_request) failed:", err),
     );
 
     res.json({ success: true, ...result });

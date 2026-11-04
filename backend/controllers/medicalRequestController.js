@@ -1,7 +1,5 @@
 import * as service from "../services/medicalRequestService.js";
-import { notifyRole } from "../services/notificationService.js";
-
-const MEDICAL_REQUEST_NOTIFY_ROLES = ["hr_officer", "hr_supervisor"];
+import { notifyBookingRequest } from "../services/notifyService.js";
 
 // POST /api/medical-requests
 // body: { items: [{ employeeId, checkType?, clientName?, reason? }], requestedStart?, requestedEnd?, provider?, remarks? }
@@ -17,18 +15,13 @@ export async function createBatch(req, res) {
       { requestedStart, requestedEnd, provider, remarks },
     );
 
-    const payload = {
-      type: "medical_request_batch",
-      title: "มีคำขอนัดตรวจสุขภาพใหม่",
-      message: [`${employeeCount} คน`, batch.provider].filter(Boolean).join(" • "),
-      link: `/medical-requests/${batch.id}`,
-    };
-    Promise.all(
-      MEDICAL_REQUEST_NOTIFY_ROLES.map((role) =>
-        notifyRole(role, payload).catch((err) =>
-          console.error(`notifyRole (${role}) failed:`, err),
-        ),
-      ),
+    notifyBookingRequest({
+      kind: "medical",
+      batch,
+      employeeCount,
+      actorUserId: req.user.id,
+    }).catch((err) =>
+      console.error("notifyBookingRequest (medical) failed:", err),
     );
 
     res.status(201).json({ id: batch.id, employeeCount });

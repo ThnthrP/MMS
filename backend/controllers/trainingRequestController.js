@@ -1,15 +1,5 @@
 import * as service from "../services/trainingRequestService.js";
-import { notifyRole } from "../services/notificationService.js";
-
-// ── กลุ่ม role ที่ต้องได้รับแจ้งเตือนเรื่อง training request (ให้ตรงกับ complianceController.js เดิม) ──
-const TRAINING_REQUEST_NOTIFY_ROLES = [
-  "hr_officer",
-  "hr_supervisor",
-  "training_officer",
-];
-
-const fmtDay = (d) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : null;
+import { notifyBookingRequest } from "../services/notifyService.js";
 
 // POST /api/training-requests
 // body: { items: [{ employeeId, globalTrainingId, clientName }], requestedStart?, requestedEnd?, provider?, remarks? }
@@ -25,28 +15,15 @@ export async function createBatch(req, res) {
       { requestedStart, requestedEnd, provider, remarks },
     );
 
-    const when = [fmtDay(batch.requestedStart), fmtDay(batch.requestedEnd)]
-      .filter(Boolean)
-      .join("–");
-    const payload = {
-      type: "training_request_batch",
-      title: "มีคำขอจัด Training ใหม่",
-      message: [
-        `${employeeCount} คน • ${trainingCount} training`,
-        when,
-        batch.provider,
-      ]
-        .filter(Boolean)
-        .join(" • "),
-      link: `/training-requests/${batch.id}`,
-    };
-
-    Promise.all(
-      TRAINING_REQUEST_NOTIFY_ROLES.map((role) =>
-        notifyRole(role, payload).catch((err) =>
-          console.error(`notifyRole (${role}) failed:`, err),
-        ),
-      ),
+    // แจ้ง HR ทุก role (กระดิ่ง + อีเมล) — ไม่รอ ไม่ทำให้การส่งคำขอพัง
+    notifyBookingRequest({
+      kind: "training",
+      batch,
+      employeeCount,
+      trainingCount,
+      actorUserId: req.user.id,
+    }).catch((err) =>
+      console.error("notifyBookingRequest (training) failed:", err),
     );
 
     res.status(201).json({ id: batch.id, employeeCount, trainingCount });

@@ -1,5 +1,5 @@
 import * as service from "../services/projectService.js";
-import { notifyRole } from "../services/notificationService.js";
+import { notifyProjectCreated } from "../services/notifyService.js";
 
 export async function getProjects(req, res) {
   try {
@@ -30,15 +30,10 @@ export async function createProject(req, res) {
     // await ให้รันเสร็จจริงก่อน response (กันหายตอน server restart กะทันหัน)
     // แต่แยก try/catch ของตัวเอง — ถ้าแจ้งเตือนพัง ไม่ทำให้ request หลัก fail
     // เพราะ project ถูกสร้างสำเร็จแล้วจริงๆ ไม่ควรให้ user เห็น error ที่ทำให้เข้าใจผิด
-    try {
-      await notifyRole("manpower_supply", {
-        type: "project_created",
-        title: "มี Project ใหม่",
-        message: `${project.name} ถูกเปิดใช้งานแล้ว — เตรียมจัดหาพนักงาน`,
-        link: `/projects/${project.id}`,
-      });
+        try {
+      await notifyProjectCreated(project, req.user.id);
     } catch (notifyError) {
-      console.error("Failed to notify manpower_supply:", notifyError);
+      console.error("Failed to notify MP (project_created):", notifyError);
     }
 
     res.status(201).json(project);

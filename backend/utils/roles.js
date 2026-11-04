@@ -71,3 +71,10 @@ export const extraRolesOut = (user) =>
     .map((ur) => ur?.role)
     .filter(Boolean)
     .map((r) => ({ id: r.id, name: r.name }));
+
+// ── กลุ่ม role สำหรับแจ้งเตือน / สิทธิ์ — แก้ที่นี่ที่เดียว ──
+export const ROLE_GROUPS = {
+  HR: ["hr_officer", "hr_supervisor", "personal_record_officer", "training_officer"],
+  MP: ["manpower_supply", "project_engineer"],
+  SAFETY: ["safety_officer", "safety_manager"],
+};

@@ -6,24 +6,34 @@
 // เฟส 1 (เรื่องด่วน 4 เรื่อง ตาม MMS — Email Notification Spec):
 //   notifyJobRejected            worker ปฏิเสธงาน          → Requester + MP
 //   checkOverdueResponses        เลยกำหนดตอบรับ (responseDays) → Requester + MP
-//   notifyCheckInFailed          ตรวจก่อนเดินทางไม่ผ่าน      → Requester + MP + safety_manager + PE
+//   notifyCheckInFailed          ตรวจก่อนเดินทางไม่ผ่าน      → Requester + MP + Safety + PE
 //   notifyMatchExceptionsRequested ขอ PE อนุมัติ % Match ไม่ครบ → PE ทุกคน (อีเมลอย่างเดียว —
 //                                 กระดิ่งมีอยู่แล้วใน matchExceptionService ผ่าน notifyRole)
+// เพิ่มเติม:
+//   notifyBookingRequest         คำขอ Training / Medical ใหม่ → HR ทุก role
+//   notifyProjectCreated         เปิด requirement ใหม่        → MP ทุก role
 //
-// ผู้รับตาม role นับทั้ง role หลักและ role เสริม (UserRole) · ไม่แจ้งตัวผู้ทำเอง
-// อีเมลห้ามมีค่าผลตรวจสุขภาพ / รหัสผ่าน / PIN
+// กลุ่ม role อยู่ที่ utils/roles.js (ROLE_GROUPS)
 // ============================================================
 import crypto from "crypto";
 import prisma from "../config/prisma.js";
-import { renderEmail, fmtDateTimeTH, fmtMob } from "./emailTemplates.js";
+import {
+  renderEmail,
+  fmtDate,
+  fmtDateTimeTH,
+  fmtMob,
+} from "./emailTemplates.js";
+import { ROLE_GROUPS } from "../utils/roles.js";
 
 export const ROLE = {
-  MP: ["manpower_supply"],
-  PE: ["project_engineer"],
-  SAFETY_MANAGER: ["safety_manager"],
+  MP: ROLE_GROUPS.MP,
+  PE: ["project_engineer"], // อำนาจอนุมัติ % Match — PE เท่านั้น
+  SAFETY: ROLE_GROUPS.SAFETY,
+  HR: ROLE_GROUPS.HR,
 };
 
-const emailEnabled = () => String(process.env.EMAIL_ENABLED || "").toLowerCase() === "true";
+const emailEnabled = () =>
+  String(process.env.EMAIL_ENABLED || "").toLowerCase() === "true";
 
 // ── หา user จาก id + role (หลักหรือเสริม) ──
 async function resolveRecipients({ userIds = [], roles = [], exclude = [] }) {
@@ -78,7 +88,13 @@ export async function notify({
       await prisma.$transaction(async (tx) => {
         if (inApp) {
           await tx.notification.create({
-            data: { userId: u.id, type, title, message: message || null, link: link || null },
+            data: {
+              userId: u.id,
+              type,
+              title,
+              message: message || null,
+              link: link || null,
+            },
           });
         }
         if (mail && u.email) {
@@ -101,7 +117,8 @@ export async function notify({
       count++;
     } catch (err) {
       // P2002 = มีคนส่งเหตุการณ์เดียวกันพร้อมกัน — ถือว่าแจ้งแล้ว
-      if (err.code !== "P2002") console.error(`[notify] ${type} → ${u.email}:`, err.message);
+      if (err.code !== "P2002")
+        console.error(`[notify] ${type} → ${u.email}:`, err.message);
     }
   }
   return { sent: count };
@@ -115,7 +132,8 @@ const projectLabel = (project) =>
   [onCode(project), project?.name].filter(Boolean).join(" ") || "—";
 const refOf = (project, positionName) =>
   [onCode(project) || project?.name, positionName].filter(Boolean).join(" · ");
-const personOf = (e) => [e?.fullName, e?.empId || e?.empCode].filter(Boolean).join(" · ");
+const personOf = (e) =>
+  [e?.fullName, e?.empId || e?.empCode].filter(Boolean).join(" · ");
 
 // วัน MOB จริงจาก Worker Schedule ถ้ามี ไม่งั้นใช้วันเริ่มงานของ requirement
 async function mobDateOf(employeeId, project) {
@@ -142,7 +160,12 @@ const REQUEST_INCLUDE = {
   },
 };
 
-const EMPLOYEE_SELECT = { id: true, fullName: true, empId: true, empCode: true };
+const EMPLOYEE_SELECT = {
+  id: true,
+  fullName: true,
+  empId: true,
+  empCode: true,
+};
 
 async function loadCandidate(candidateId) {
   return prisma.candidate.findUnique({
@@ -182,7 +205,10 @@ export async function notifyJobRejected(candidateId, note) {
       lead: `พนักงานปฏิเสธงานผ่าน Worker App เมื่อ ${fmtDateTimeTH(new Date())}`,
       rows: [
         ["Project", projectLabel(project)],
-        ["ตำแหน่ง", `${req.position?.name || "—"} (ต้องการ ${req.quantity} คน)`],
+        [
+          "ตำแหน่ง",
+          `${req.position?.name || "—"} (ต้องการ ${req.quantity} คน)`,
+        ],
         ["พนักงาน", personOf(c.employee)],
         ["เหตุผล", note || "—"],
         ["MOB", fmtMob(mob)],
@@ -290,7 +316,7 @@ export async function notifyCheckInFailed(taskId, actorUserId) {
     type: "checkin_failed",
     priority: "urgent",
     userIds: [req.requestedById],
-    roles: [...ROLE.MP, ...ROLE.SAFETY_MANAGER, ...ROLE.PE],
+    roles: [...ROLE.MP, ...ROLE.SAFETY, ...ROLE.PE],
     exclude: [actorUserId],
     title: `Check In ไม่ผ่าน — ${emp.fullName || ""}`,
     message: `${refOf(project, req.position?.name)} · ต้องหาคนแทนก่อนเดินทาง`,
@@ -319,7 +345,10 @@ export async function notifyCheckInFailed(taskId, actorUserId) {
 //    เรียกจาก matchExceptionService.createRequests หลังส่งคำขอ (MP ส่งหลายคนพร้อมกันได้)
 //    ส่ง 1 ฉบับต่อการกดส่ง 1 ครั้ง · อีเมลอย่างเดียว (กระดิ่งมีของเดิมแล้ว)
 // ════════════════════════════════════════════════════════════
-export async function notifyMatchExceptionsRequested(exceptionIds, actorUserId) {
+export async function notifyMatchExceptionsRequested(
+  exceptionIds,
+  actorUserId,
+) {
   const ids = [...new Set((exceptionIds || []).filter(Boolean))];
   if (!ids.length) return;
   const rows = await prisma.matchExceptionRequest.findMany({
@@ -337,9 +366,11 @@ export async function notifyMatchExceptionsRequested(exceptionIds, actorUserId) 
   const req = first.manpowerRequest;
   const project = req?.project;
   const requester =
-    `${first.requestedBy?.titlePrefix || ""}${first.requestedBy?.name || ""}` || "—";
+    `${first.requestedBy?.titlePrefix || ""}${first.requestedBy?.name || ""}` ||
+    "—";
   const pctOf = (r) => Math.round(Number(r.matchPct) || 0);
-  const missingOf = (r) => (Array.isArray(r.missingTrainings) ? r.missingTrainings : []);
+  const missingOf = (r) =>
+    Array.isArray(r.missingTrainings) ? r.missingTrainings : [];
 
   const workerRows = rows.map((r) => {
     const miss = missingOf(r);
@@ -352,7 +383,12 @@ export async function notifyMatchExceptionsRequested(exceptionIds, actorUserId) 
   // ไม่อนุมัติแล้วขอใหม่ = record เดิมถูกเขียนทับ → รวม updatedAt เข้า key เพื่อแยกรอบ
   const dedupeKey = `match_exception:${crypto
     .createHash("sha1")
-    .update(rows.map((r) => `${r.id}@${new Date(r.updatedAt).getTime()}`).sort().join("|"))
+    .update(
+      rows
+        .map((r) => `${r.id}@${new Date(r.updatedAt).getTime()}`)
+        .sort()
+        .join("|"),
+    )
     .digest("hex")}`;
 
   const single = rows.length === 1;
@@ -375,12 +411,116 @@ export async function notifyMatchExceptionsRequested(exceptionIds, actorUserId) 
       lead: `${requester} ขอใช้พนักงานที่ training ไม่ครบตาม matrix`,
       rows: [
         ["Project", projectLabel(project)],
-        ["ตำแหน่ง", `${req?.position?.name || "—"} (ต้องการ ${req?.quantity ?? "—"} คน)`],
+        [
+          "ตำแหน่ง",
+          `${req?.position?.name || "—"} (ต้องการ ${req?.quantity ?? "—"} คน)`,
+        ],
         ...workerRows,
         ["เหตุผลที่ขอ", first.reason || "—"],
       ],
       todo: "อนุมัติหรือไม่อนุมัติที่ PE Approvals",
       button: { label: "เปิด PE Approvals", path: link },
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// 5) คำขอจัด Training / นัดตรวจสุขภาพใหม่ → HR ทุก role (กระดิ่ง + อีเมล)
+//    เรียกจาก trainingRequestController / medicalRequestController
+//    ไม่ใส่ผลตรวจสุขภาพในอีเมล — แค่จำนวนคน / วันที่ / สถานที่
+// ════════════════════════════════════════════════════════════
+const fmtRange = (s, e) => {
+  const a = s ? fmtDate(s) : null;
+  const b = e ? fmtDate(e) : null;
+  if (a && b && a !== b) return `${a} – ${b}`;
+  return a || b || "—";
+};
+
+async function userLabel(userId) {
+  if (!userId) return "—";
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, titlePrefix: true },
+  });
+  return `${u?.titlePrefix || ""}${u?.name || ""}` || "—";
+}
+
+export async function notifyBookingRequest({
+  kind, // "training" | "medical"
+  batch,
+  employeeCount,
+  trainingCount,
+  actorUserId,
+}) {
+  const isTraining = kind === "training";
+  const link = `/${isTraining ? "training" : "medical"}-requests/${batch.id}`;
+  const requester = await userLabel(actorUserId);
+  const when = fmtRange(batch.requestedStart, batch.requestedEnd);
+  const title = isTraining
+    ? "มีคำขอจัด Training ใหม่"
+    : "มีคำขอนัดตรวจสุขภาพใหม่";
+  const summary = isTraining
+    ? `${employeeCount} คน · ${trainingCount} หลักสูตร`
+    : `${employeeCount} คน`;
+
+  return notify({
+    type: isTraining ? "training_request_batch" : "medical_request_batch",
+    priority: "now",
+    roles: ROLE.HR,
+    exclude: [actorUserId],
+    title,
+    message: [summary, when !== "—" ? when : null, batch.provider]
+      .filter(Boolean)
+      .join(" • "),
+    link,
+    dedupeKey: `${kind}_request:${batch.id}`,
+    email: {
+      label: "action",
+      topic: title,
+      ref: summary,
+      lead: `${requester} ส่งคำขอ${isTraining ? "จัดอบรม" : "นัดตรวจสุขภาพ"}ถึง HR เมื่อ ${fmtDateTimeTH(batch.createdAt || new Date())}`,
+      rows: [
+        ["จำนวน", summary],
+        ["วันที่ต้องการ", when],
+        [isTraining ? "ศูนย์อบรม" : "โรงพยาบาล", batch.provider || "—"],
+        ["หมายเหตุ", batch.remarks || "—"],
+      ],
+      todo: isTraining
+        ? "ยืนยันวันอบรม หรือปฏิเสธรายคน ที่ Training Bookings"
+        : "ยืนยันวันนัด หรือปฏิเสธรายคน ที่ Medical Bookings",
+      button: { label: "เปิดคำขอ", path: link },
+    },
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// 6) เปิด requirement ใหม่ → ทีม MP (กระดิ่ง + อีเมล)
+// ════════════════════════════════════════════════════════════
+export async function notifyProjectCreated(project, actorUserId) {
+  const link = `/projects/${project.id}`;
+  const requester = await userLabel(actorUserId);
+  return notify({
+    type: "project_created",
+    priority: "now",
+    roles: ROLE.MP,
+    exclude: [actorUserId],
+    title: "มี Project ใหม่",
+    message: `${project.name} ถูกเปิดใช้งานแล้ว — เตรียมจัดหาพนักงาน`,
+    link,
+    dedupeKey: `project_created:${project.id}`,
+    email: {
+      label: "action",
+      topic: "มี requirement ใหม่ — เตรียมจัดหาพนักงาน",
+      ref: projectLabel(project),
+      lead: `${requester} เปิด requirement ใหม่เมื่อ ${fmtDateTimeTH(project.createdAt || new Date())}`,
+      rows: [
+        ["Project", projectLabel(project)],
+        ["สถานที่", project.location || "—"],
+        ["ช่วงทำงาน", fmtRange(project.startDate, project.endDate)],
+        ["Onshore / Offshore", project.isOffshore ? "Offshore" : "Onshore"],
+      ],
+      todo: "ดูตำแหน่งที่ต้องการ แล้วเสนอชื่อที่ Assign Names",
+      button: { label: "เปิด Requirement", path: link },
     },
   });
 }

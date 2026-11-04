@@ -3,23 +3,17 @@ import * as controller from "../controllers/trainingRequestController.js";
 import userAuth from "../middleware/userAuth.js";
 import requireRole from "../middleware/requireRole.js";
 import { getTrainingItems } from "../controllers/bookingListController.js";
+import { ROLE_GROUPS } from "../utils/roles.js";
 
 const router = express.Router();
 router.use(userAuth);
 
-// role ที่ส่งคำขอได้ (หน้า Allocation / Training Courses / Training Bookings)
+// role ที่ส่งคำขอได้
 const REQUESTER_ROLES = [
-  "admin",
-  "manpower_supply",
-  "hr_supervisor",
-  "personal_record_officer",
-  "hr_officer",
-  "project_engineer",
-  "safety_manager",
-  "training_officer",
+  ...new Set(["admin", ...ROLE_GROUPS.HR, ...ROLE_GROUPS.MP, "safety_manager"]),
 ];
 // role ที่จัดการคำขอ (ดูรายการ / ยืนยัน / ปฏิเสธ)
-const HR_ROLES = ["admin", "hr_officer", "hr_supervisor", "training_officer"];
+const HR_ROLES = ["admin", ...ROLE_GROUPS.HR];
 
 // ต้องอยู่ก่อน "/:id" — ไม่งั้น "availability" ถูกตีความเป็น id
 // ใช้ทั้งการ์ด Request training และ Request medical (เตือนคนที่ติดงานช่วงนั้น)
