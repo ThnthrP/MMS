@@ -1229,7 +1229,7 @@ export default function Mobilization() {
     const h = healthRiskDisplay(r.healthRisk);
     return (
       <span
-        className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${h.cls}`}
+        className={`inline-block rounded-md px-2 py-0.5 text-center text-[11px] font-semibold leading-tight ${h.cls}`}
       >
         {h.label}
       </span>
@@ -2071,15 +2071,17 @@ export default function Mobilization() {
             <div className="hidden max-h-[560px] overflow-auto lg:block">
               <table className="w-full min-w-[980px] table-fixed border-collapse">
                 <colgroup>
-                  <col className="w-[17%]" />
-                  <col className="w-[7%]" />
+                  {/* Worker 15 · Health 10 (พอสำหรับ "Temporary unfit") · Medical 9 · Checklist 8
+                      · From 8 · MOB 11 · D-MOB 11 · Platform 8 · Status 10 · Actions 10 */}
+                  <col className="w-[15%]" />
+                  <col className="w-[10%]" />
                   <col className="w-[9%]" />
                   <col className="w-[8%]" />
                   <col className="w-[8%]" />
                   <col className="w-[11%]" />
                   <col className="w-[11%]" />
                   <col className="w-[8%]" />
-                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
                   <col className="w-[10%]" />
                 </colgroup>
                 <thead>
@@ -2107,8 +2109,10 @@ export default function Mobilization() {
                     return (
                       <tr key={r.employeeId} className="hover:bg-gray-50/60">
                         <td className={TD}>{renderWorkerInfo(r)}</td>
-                        <td className={TD}>{renderHealth(r)}</td>
-                        <td className={TD}>{renderMedical(r)}</td>
+                        <td className={`${TD} text-center`}>{renderHealth(r)}</td>
+                        <td className={TD}>
+                          <div className="flex justify-center">{renderMedical(r)}</div>
+                        </td>
                         <td className={`${TD} text-center`}>
                           {renderChecklistBtn(r)}
                         </td>
@@ -2124,7 +2128,9 @@ export default function Mobilization() {
                         <td className={TD}>
                           {renderInput(r, "platform", "text", "e.g. BELQ")}
                         </td>
-                        <td className={TD}>{renderStatus(r)}</td>
+                        <td className={TD}>
+                          <div className="flex justify-center">{renderStatus(r)}</div>
+                        </td>
                         <td className={TD}>{renderActions(r, false)}</td>
                       </tr>
                     );
