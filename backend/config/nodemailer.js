@@ -10,11 +10,11 @@ const transporter = nodemailer.createTransport({
   secure:
     String(process.env.SMTP_SECURE || "").toLowerCase() === "true" ||
     port === 465,
-  // บาง relay ของบริษัทไม่ต้อง login (อนุญาตตาม IP) → ไม่ตั้ง SMTP_USER ได้
+  // relay ของบริษัทที่อนุญาตตาม IP ไม่ต้อง login → ไม่ตั้ง SMTP_USER
   auth: process.env.SMTP_USER
     ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
     : undefined,
-  tls: { rejectUnauthorized: false },
+  // ตรวจใบรับรองของ SMTP ตามปกติ (ห้ามใส่ rejectUnauthorized: false)
 });
 
 export default transporter;
