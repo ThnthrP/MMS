@@ -194,20 +194,6 @@ const projectSelectStyles = {
   }),
   valueContainer: (b) => ({ ...b, padding: "6px 8px" }),
 };
-const positionSelectStyles = {
-  control: (b) => ({
-    ...b,
-    minHeight: "40px",
-    fontSize: "13px",
-    borderRadius: "8px",
-    borderColor: "#ced4da",
-    boxShadow: "none",
-    "&:hover": { borderColor: "#86b7fe" },
-  }),
-  option: (b) => ({ ...b, fontSize: "13px" }),
-  menuPortal: (b) => ({ ...b, zIndex: 9999 }),
-};
-
 // ══════════════════════════════════════════════════════════
 // helpers
 // ══════════════════════════════════════════════════════════
@@ -490,71 +476,50 @@ function AddEntry({ value, onChange, onAdd, placeholder, disabled }) {
 }
 
 // แถบความคืบหน้า n / q
-function ProgressRow({ label, n, q, barClass }) {
-  const pct = q > 0 ? Math.min(100, Math.round((n / q) * 100)) : 0;
-  return (
-    <div className="mt-1.5">
-      <div className="flex justify-between text-[11px] text-gray-500">
-        <span>{label}</span>
-        <span className="font-semibold text-gray-800">
-          {n}/{q}
-        </span>
-      </div>
-      <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
-        {/* ความกว้างเป็นค่าที่คำนวณ → ต้องใช้ inline style */}
-        <div
-          className={`h-full rounded-full ${barClass}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
+// สถานะต่อตำแหน่ง: done = Deploy ครบ · ready = Approve ครบ รอ Deploy · short = Approve ยังไม่ครบ
+function positionState(p) {
+  if (p.deployedCount >= p.quantity) return "done";
+  if (p.approvedCount >= p.quantity) return "ready";
+  return "short";
 }
+const POSITION_STATE = {
+  short: { dot: "bg-amber-500", label: "Approve ยังไม่ครบ", order: 0 },
+  ready: { dot: "bg-blue-500", label: "รอ Deploy", order: 1 },
+  done: { dot: "bg-emerald-500", label: "Deploy ครบแล้ว", order: 2 },
+};
 
-// การ์ดสรุปต่อตำแหน่ง — แทน badge ยาว + legend เดิม (อ่านยาก)
-function PositionCard({ p, active, onClick }) {
-  const deployDone = p.deployedCount >= p.quantity;
-  const approveDone = p.approvedCount >= p.quantity;
-  const [tone, label] = deployDone
-    ? ["ok", "✓ ครบแล้ว"]
-    : approveDone
-      ? ["info", "⏳ รอ Deploy"]
-      : ["warn", "⚠ Approve ยังไม่ครบ"];
-  const Tag = onClick ? "button" : "div";
+// ชิปสรุปต่อตำแหน่ง (บรรทัดเดียว) — แทนการ์ดเดิมที่สูงจนดันตารางพนักงานลงไป
+function PositionChip({ p, active, onClick }) {
+  const st = POSITION_STATE[positionState(p)];
   return (
-    <Tag
-      type={onClick ? "button" : undefined}
+    <button
+      type="button"
       onClick={onClick}
-      title={
-        onClick
-          ? active
-            ? "แสดงทุกตำแหน่ง"
-            : "กรองเฉพาะตำแหน่งนี้"
-          : undefined
-      }
-      className={`block w-full rounded-lg border bg-white px-3 py-2 text-left transition-colors ${
-        active ? "border-blue-500 ring-2 ring-blue-500/20" : "border-gray-200"
-      } ${onClick ? "cursor-pointer hover:border-blue-300" : ""}`}
+      title={`${p.positionName ?? "Unknown"} — ${st.label}\nApproved ${p.approvedCount}/${p.quantity} · Deployed ${p.deployedCount}/${p.quantity}\n${
+        active ? "กดอีกครั้งเพื่อแสดงทุกตำแหน่ง" : "กดเพื่อกรองเฉพาะตำแหน่งนี้"
+      }`}
+      aria-pressed={active}
+      className={`inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+        active
+          ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20"
+          : "border-gray-200 bg-white hover:border-blue-300"
+      }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 break-words text-xs font-semibold text-gray-800">
-          {p.positionName ?? "Unknown"}
+      <span className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} />
+      <span className="min-w-0 max-w-[220px] truncate font-semibold text-gray-800">
+        {p.positionName ?? "Unknown"}
+      </span>
+      <span className="shrink-0 tabular-nums text-gray-500">
+        A {p.approvedCount}/{p.quantity} · D{" "}
+        <span
+          className={
+            p.deployedCount >= p.quantity ? "font-semibold text-emerald-700" : ""
+          }
+        >
+          {p.deployedCount}/{p.quantity}
         </span>
-        <Badge tone={tone}>{label}</Badge>
-      </div>
-      <ProgressRow
-        label="Approved"
-        n={p.approvedCount}
-        q={p.quantity}
-        barClass="bg-blue-500"
-      />
-      <ProgressRow
-        label="Deployed"
-        n={p.deployedCount}
-        q={p.quantity}
-        barClass="bg-emerald-500"
-      />
-    </Tag>
+      </span>
+    </button>
   );
 }
 
@@ -941,6 +906,19 @@ export default function Mobilization() {
       prev.map((r) => (r.employeeId === employeeId ? { ...r, ...patch } : r)),
     );
 
+  // ── กรอกให้ทุกคน (From / Platform / MOB / D-MOB) ──
+  // ใช้กับคนที่ยังไม่ Deploy ในรายการที่แสดงอยู่ (ตามตำแหน่งที่กรอง) · ช่องที่เว้นว่าง = ไม่เปลี่ยน
+  const EMPTY_BULK = { fromLocation: "", platform: "", mobDate: "", demobDate: "" };
+  const [bulkFields, setBulkFields] = useState(EMPTY_BULK);
+  const setBulkField = (field, value) =>
+    setBulkFields((f) => {
+      const next = { ...f, [field]: value };
+      // เลือก MOB แล้วเติม D-MOB = MOB + 28 วันให้ (แก้เองได้)
+      if (field === "mobDate") next.demobDate = value ? addDays(value, DEMOB_DAYS) : "";
+      return next;
+    });
+  const bulkHasValue = Object.values(bulkFields).some((v) => v.trim() !== "");
+
   const deploy = async (targets) => {
     if (!project || !targets.length || deploying) return;
     try {
@@ -1132,26 +1110,20 @@ export default function Mobilization() {
   );
   const allDeployed = rows.length > 0 && rows.every((r) => r.deployed);
 
-  // หัวข้ออบรม (ทั้งหมด) — เฉพาะคนที่ยังไม่ Deploy (คนที่ส่งไปแล้ว checklist ถูกล็อก)
-  const bulkTargets = useMemo(() => rows.filter((r) => !r.deployed), [rows]);
-
-  const positionFilterOptions = useMemo(() => {
-    const opts = positionSummary
-      .map((p) => {
-        const incomplete = p.deployedCount < p.quantity;
-        return {
-          value: p.requestId,
-          label: `${p.positionName ?? "Unknown"} — Deployed ${p.deployedCount}/${p.quantity}${incomplete ? " ⚠" : " ✓"}`,
-          incomplete,
-        };
-      })
-      .sort((a, b) =>
-        a.incomplete === b.incomplete ? 0 : a.incomplete ? -1 : 1,
-      );
-    return [
-      { value: "all", label: `All Positions (${positionSummary.length})` },
-      ...opts,
-    ];
+  // ชิปตำแหน่ง: ยังไม่ครบขึ้นก่อน
+  const sortedPositions = useMemo(
+    () =>
+      [...positionSummary].sort(
+        (a, b) =>
+          POSITION_STATE[positionState(a)].order -
+          POSITION_STATE[positionState(b)].order,
+      ),
+    [positionSummary],
+  );
+  const positionCounts = useMemo(() => {
+    const c = { short: 0, ready: 0, done: 0 };
+    positionSummary.forEach((p) => (c[positionState(p)] += 1));
+    return c;
   }, [positionSummary]);
 
   const filteredRows = useMemo(
@@ -1161,6 +1133,35 @@ export default function Mobilization() {
         : rows.filter((r) => r.requestId === positionFilter),
     [rows, positionFilter],
   );
+
+  // กรอกให้ทุกคน + หัวข้ออบรม (ทั้งหมด): เฉพาะคนที่ยังไม่ Deploy ในรายการที่แสดงอยู่
+  // (คนที่ส่งไปแล้ว checklist / ข้อมูลเดินทางถูกล็อก) · กรองตำแหน่งไว้ = ใช้กับตำแหน่งนั้นเท่านั้น
+  const bulkFieldTargets = useMemo(
+    () => filteredRows.filter((r) => !r.deployed),
+    [filteredRows],
+  );
+  const bulkTargets = bulkFieldTargets;
+  const applyBulkFields = () => {
+    if (!bulkHasValue || bulkFieldTargets.length === 0) return;
+    const patch = Object.fromEntries(
+      Object.entries(bulkFields)
+        .map(([k, v]) => [k, v.trim()])
+        .filter(([, v]) => v !== ""),
+    );
+    const overwrite = bulkFieldTargets.some((r) =>
+      Object.keys(patch).some((k) => r[k] && r[k] !== patch[k]),
+    );
+    if (
+      overwrite &&
+      !window.confirm(
+        `ใช้ค่านี้กับพนักงานที่ยังไม่ Deploy ${bulkFieldTargets.length} คน?\n(ช่องที่กรอกไว้แล้วจะถูกเขียนทับ · ยังไม่บันทึกจนกว่าจะกด Deploy)`,
+      )
+    )
+      return;
+    const ids = new Set(bulkFieldTargets.map((r) => r.employeeId));
+    setRows((prev) => prev.map((r) => (ids.has(r.employeeId) ? { ...r, ...patch } : r)));
+    setBulkFields(EMPTY_BULK);
+  };
 
   const showPositionFilter = positionSummary.length > 1;
   const hasRows = project && rows.length > 0;
@@ -1802,25 +1803,6 @@ export default function Mobilization() {
             />
           </div>
 
-          {hasRows && showPositionFilter && (
-            <div className="w-full sm:w-[300px]">
-              <label className={FILTER_LABEL}>Position Request</label>
-              <Select
-                options={positionFilterOptions}
-                value={positionFilterOptions.find(
-                  (o) => o.value === positionFilter,
-                )}
-                onChange={(o) => setPositionFilter(o ? o.value : "all")}
-                styles={positionSelectStyles}
-                menuPortalTarget={
-                  typeof document !== "undefined" ? document.body : null
-                }
-                menuPosition="fixed"
-                isSearchable={false}
-              />
-            </div>
-          )}
-
           {hasRows && (
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:pb-1.5">
               <Badge tone="ok">{deployedCount} deployed</Badge>
@@ -1877,16 +1859,6 @@ export default function Mobilization() {
                   ✅ Deploy ครบทุกตำแหน่งแล้ว
                 </span>
               )}
-            {hasRows && (
-              <button
-                type="button"
-                onClick={() => setBulkOpen(true)}
-                aria-haspopup="dialog"
-                className={`ml-auto cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
-              >
-                🦺 หัวข้ออบรม (ทั้งหมด)
-              </button>
-            )}
           </div>
         )}
       </div>
@@ -1928,27 +1900,100 @@ export default function Mobilization() {
 
       {/* ════════ Step 10–11 ════════ */}
       <div className={CARD}>
-        {/* ── สรุปตามตำแหน่ง: การ์ดละตำแหน่ง กดเพื่อกรองได้ ── */}
+        {/* ── สรุปตามตำแหน่ง: ชิปบรรทัดเดียว กดเพื่อกรอง ── */}
         {hasRows && positionSummary.length > 0 && (
           <div className="border-b border-gray-100 py-3">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-              {positionSummary.map((p) => (
-                <PositionCard
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+              <span className="font-semibold uppercase tracking-[0.4px]">
+                ตำแหน่ง ({positionSummary.length})
+              </span>
+              {["short", "ready", "done"].map((k) =>
+                positionCounts[k] ? (
+                  <span key={k} className="inline-flex items-center gap-1">
+                    <span className={`h-2 w-2 rounded-full ${POSITION_STATE[k].dot}`} />
+                    {POSITION_STATE[k].label} {positionCounts[k]}
+                  </span>
+                ) : null,
+              )}
+              <span>· A = Approved · D = Deployed</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {showPositionFilter && (
+                <button
+                  type="button"
+                  onClick={() => setPositionFilter("all")}
+                  aria-pressed={positionFilter === "all"}
+                  className={`cursor-pointer rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    positionFilter === "all"
+                      ? "border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500/20"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-blue-300"
+                  }`}
+                >
+                  ทั้งหมด ({rows.length} คน)
+                </button>
+              )}
+              {sortedPositions.map((p) => (
+                <PositionChip
                   key={p.requestId}
                   p={p}
                   active={positionFilter === p.requestId}
-                  onClick={
-                    showPositionFilter
-                      ? () =>
-                          setPositionFilter(
-                            positionFilter === p.requestId
-                              ? "all"
-                              : p.requestId,
-                          )
-                      : undefined
+                  onClick={() =>
+                    setPositionFilter(
+                      positionFilter === p.requestId ? "all" : p.requestId,
+                    )
                   }
                 />
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── กรอกให้ทุกคน: From / Platform / MOB / D-MOB ── */}
+        {hasRows && canManageMobilization && bulkFieldTargets.length > 0 && (
+          <div className="border-b border-gray-100 bg-gray-50/60 px-2.5 py-2.5">
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
+                กรอกให้ทุกคน · พนักงานที่ยังไม่ Deploy {bulkFieldTargets.length} คน
+                {positionFilter !== "all" ? " (ตำแหน่งที่เลือก)" : ""}
+                <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
+                  — ช่องที่เว้นว่างจะไม่ถูกเปลี่ยน
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                aria-haspopup="dialog"
+                className={`cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
+              >
+                🦺 หัวข้ออบรม ({bulkFieldTargets.length} คน)
+              </button>
+            </div>
+            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:max-w-[900px]">
+              {[
+                ["fromLocation", "From", "text", "e.g. STH"],
+                ["platform", "Platform", "text", "e.g. BELQ"],
+                ["mobDate", "MOB", "date"],
+                ["demobDate", "D-MOB", "date"],
+              ].map(([field, label, type, ph]) => (
+                <div key={field}>
+                  <label className={LABEL_SM}>{label}</label>
+                  <input
+                    type={type}
+                    placeholder={ph}
+                    value={bulkFields[field]}
+                    onChange={(e) => setBulkField(field, e.target.value)}
+                    className={INPUT}
+                  />
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={applyBulkFields}
+                disabled={!bulkHasValue}
+                className="col-span-2 min-h-[34px] cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 text-xs font-bold text-white hover:bg-[#22265f] disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1"
+              >
+                ใช้กับทุกคน ({bulkFieldTargets.length})
+              </button>
             </div>
           </div>
         )}
