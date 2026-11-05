@@ -123,7 +123,9 @@ function DayGrid({ project, restByEmp }) {
   });
 
   return (
-    <div className="overflow-x-auto">
+    <div>
+      {/* เลื่อนแนวนอนเฉพาะตาราง — คำอธิบายสัญลักษณ์ด้านล่างอยู่กับที่ */}
+      <div className="overflow-x-auto">
       <table className="border-collapse text-[11px]">
         <thead>
           <tr>
@@ -231,6 +233,7 @@ function DayGrid({ project, restByEmp }) {
           })}
         </tbody>
       </table>
+      </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 px-4 py-2 text-[10px] text-gray-500">
         <span><b className="rounded bg-gray-200 px-1 text-gray-500">จบ</b> จบงานก่อนหน้า</span>
         <span><b className="rounded bg-rose-50 px-1 text-rose-500">R</b> วันพักก่อนลงงาน</span>
