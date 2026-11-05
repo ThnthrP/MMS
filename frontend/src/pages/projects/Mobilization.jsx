@@ -1288,11 +1288,14 @@ export default function Mobilization() {
     />
   );
 
-  const renderStatus = (r) => {
+  // center = ในตาราง (badge + ข้อความใต้ badge อยู่กลางคอลัมน์) · การ์ดมือถือชิดซ้ายตามเดิม
+  const renderStatus = (r, center = false) => {
     const st = rowStatus(r);
     const reason = st === "pending" ? deployBlockReason(r) : null;
     return (
-      <div className="flex flex-col items-start gap-0.5">
+      <div
+        className={`flex flex-col gap-0.5 ${center ? "items-center text-center" : "items-start"}`}
+      >
         <Badge tone={STATUS_TONE[st]} title={reason || undefined}>
           {STATUS_LABEL[st]}
         </Badge>
@@ -2128,9 +2131,7 @@ export default function Mobilization() {
                         <td className={TD}>
                           {renderInput(r, "platform", "text", "e.g. BELQ")}
                         </td>
-                        <td className={TD}>
-                          <div className="flex justify-center">{renderStatus(r)}</div>
-                        </td>
+                        <td className={TD}>{renderStatus(r, true)}</td>
                         <td className={TD}>{renderActions(r, false)}</td>
                       </tr>
                     );
