@@ -4,12 +4,8 @@ import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import RequestBookingModal from "./RequestBookingModal";
-import {
-  buildWorkerOptions,
-  filterWorkerOption,
-  nameEN,
-  nameTH,
-} from "../../utils/workerSearch";
+import SelectedPeoplePanel from "../../components/SelectedPeoplePanel";
+import { nameEN, nameTH } from "../../utils/workerSearch";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -17,6 +13,8 @@ import {
 // ไม่ห่อเป็น card แล้ว — ใช้เส้นแบ่ง (พื้นเนื้อหาสีขาว)
 const STAT_TILE = "rounded-lg border border-gray-200 bg-white";
 const FILTER_LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
+const FILTER_FIELD =
+  "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400";
 const CHECKBOX = "h-[15px] w-[15px] cursor-pointer";
 // หัวตารางตรึงไว้ตอนเลื่อน (ต้องอยู่ในกรอบที่มี overflow-auto + max-h)
 const STICKY_TH =
@@ -151,7 +149,8 @@ export default function Certifications() {
   const [loading, setLoading] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("all");
-  const [workerFilter, setWorkerFilter] = useState(""); // employeeId
+  const [search, setSearch] = useState(""); // ชื่อไทย / อังกฤษ / รหัส
+  const [departmentFilter, setDepartmentFilter] = useState("");
   const [positionFilter, setPositionFilter] = useState("");
 
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
@@ -204,7 +203,8 @@ export default function Certifications() {
     if (selectedTraining) loadCertification(selectedTraining.value);
     else setData(null);
     setSelectedEmployeeIds([]);
-    setWorkerFilter("");
+    setSearch("");
+    setDepartmentFilter("");
     setPositionFilter("");
   }, [selectedTraining, loadCertification]);
 
@@ -220,11 +220,20 @@ export default function Certifications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainingOptions, searchParams]);
 
+  const q = search.trim().toLowerCase();
   const filteredWorkers = (data?.workers || []).filter((w) => {
-    const matchWorker = !workerFilter || w.employeeId === workerFilter;
+    // String() — รหัสบางคนเป็นตัวเลข
+    const matchSearch =
+      !q ||
+      [nameEN(w), nameTH(w), w.fullName, w.empId, w.empCode].some((v) =>
+        String(v || "")
+          .toLowerCase()
+          .includes(q),
+      );
+    const matchDept = !departmentFilter || w.department === departmentFilter;
     const matchPosition = !positionFilter || w.position === positionFilter;
     const matchStatus = statusFilter === "all" || w.bucket === statusFilter;
-    return matchWorker && matchPosition && matchStatus;
+    return matchSearch && matchDept && matchPosition && matchStatus;
   });
 
   // เลื่อนไปแถวที่ highlight — ครั้งเดียวหลังโหลดข้อมูลเสร็จ
@@ -264,28 +273,34 @@ export default function Certifications() {
   };
 
   const clearFilters = () => {
-    setWorkerFilter("");
+    setSearch("");
+    setDepartmentFilter("");
     setPositionFilter("");
     setStatusFilter("all");
   };
-  const hasFilter = workerFilter || positionFilter || statusFilter !== "all";
+  const hasFilter =
+    search || departmentFilter || positionFilter || statusFilter !== "all";
 
-  const workerOptions = [
-    { value: "", label: "All Workers" },
-    // API นี้ใช้ employeeId แทน id
-    ...buildWorkerOptions(
-      (data?.workers || []).map((w) => ({ ...w, id: w.employeeId })),
-    ),
-  ];
+  const uniqSorted = (arr) =>
+    [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const departments = uniqSorted((data?.workers || []).map((w) => w.department));
+  const positions = uniqSorted((data?.workers || []).map((w) => w.position));
 
-  const positionOptions = [
-    { value: "", label: "All Positions" },
-    ...[
-      ...new Set((data?.workers || []).map((w) => w.position).filter(Boolean)),
-    ]
-      .sort((a, b) => a.localeCompare(b))
-      .map((p) => ({ value: p, label: p })),
-  ];
+  // รายชื่อที่เลือกไว้ (แผงด้านขวา) — ไม่หายตอนค้นหา/กรอง
+  const filteredIdSet = new Set(filteredWorkers.map((w) => w.employeeId));
+  const workerById = new Map(
+    (data?.workers || []).map((w) => [w.employeeId, w]),
+  );
+  const selectedItems = selectedEmployeeIds.map((id) => {
+    const w = workerById.get(id);
+    return {
+      id,
+      name: w ? nameEN(w) : id,
+      sub: w ? [w.empId || w.empCode, w.position].filter(Boolean).join(" · ") : "",
+      badge: w ? <BucketBadge bucket={w.bucket} /> : null,
+      hidden: !filteredIdSet.has(id),
+    };
+  });
 
   const rowBg = (w) =>
     highlightedIds.includes(w.employeeId)
@@ -320,7 +335,7 @@ export default function Certifications() {
       <div className="mb-4 border-y border-gray-200 py-3">
         <div className="flex flex-wrap gap-3 sm:gap-4">
           {/* ชื่อ training บางตัวยาวมาก → ให้ช่องนี้กว้างที่สุดในแถว */}
-          <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[960px] sm:flex-[2_1_640px]">
+          <div className="w-full min-w-0">
             <label className={FILTER_LABEL}>Training / Certification</label>
             <Select
               options={trainingOptions}
@@ -333,49 +348,55 @@ export default function Certifications() {
           </div>
 
           {selectedTraining && (
-            <>
-              <div className="min-w-[200px] flex-[1_1_100%] sm:max-w-[440px] sm:flex-[1_1_300px]">
-                <label className={FILTER_LABEL}>
-                  Worker (Employee ID / ชื่อไทย / ชื่ออังกฤษ)
-                </label>
-                <Select
-                  options={workerOptions}
-                  value={
-                    workerOptions.find((o) => o.value === workerFilter) || null
-                  }
-                  onChange={(o) => setWorkerFilter(o ? o.value : "")}
-                  filterOption={filterWorkerOption}
-                  placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
-                  isClearable
-                  styles={customSelectStyles}
-                  noOptionsMessage={() => "ไม่พบ worker"}
+            <div className="grid w-full grid-cols-2 gap-3 md:grid-cols-[minmax(220px,1fr)_180px_220px_200px_auto]">
+              <div className="col-span-2 md:col-span-1">
+                <label className={FILTER_LABEL}>ค้นหาพนักงาน</label>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="🔍 ชื่อไทย / อังกฤษ หรือรหัสพนักงาน"
+                  className={FILTER_FIELD}
                 />
               </div>
-
-              <div className="min-w-[160px] flex-[1_1_45%] sm:max-w-[280px] sm:flex-[1_1_200px]">
-                <label className={FILTER_LABEL}>Position</label>
-                <Select
-                  options={positionOptions}
-                  value={
-                    positionOptions.find((o) => o.value === positionFilter) ||
-                    null
-                  }
-                  onChange={(o) => setPositionFilter(o ? o.value : "")}
-                  placeholder="Position..."
-                  isClearable
-                  styles={customSelectStyles}
-                  noOptionsMessage={() => "ไม่พบตำแหน่ง"}
-                />
+              <div>
+                <label className={FILTER_LABEL}>แผนก</label>
+                <select
+                  value={departmentFilter}
+                  onChange={(e) => setDepartmentFilter(e.target.value)}
+                  className={FILTER_FIELD}
+                >
+                  <option value="">ทุกแผนก</option>
+                  {departments.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              <div className="min-w-[160px] flex-[1_1_45%] sm:flex-[0_1_210px]">
-                <label className={FILTER_LABEL}>Status</label>
+              <div>
+                <label className={FILTER_LABEL}>ตำแหน่ง</label>
+                <select
+                  value={positionFilter}
+                  onChange={(e) => setPositionFilter(e.target.value)}
+                  className={FILTER_FIELD}
+                >
+                  <option value="">ทุกตำแหน่ง</option>
+                  {positions.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={FILTER_LABEL}>สถานะ cert</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400"
+                  className={FILTER_FIELD}
                 >
-                  <option value="all">All Status</option>
+                  <option value="all">ทุกสถานะ</option>
                   <option value="expired">🔴 Expired</option>
                   <option value="critical">🔥 Critical (&lt;30 days)</option>
                   <option value="warning">🟡 Warning (30-90 days)</option>
@@ -384,18 +405,17 @@ export default function Certifications() {
                   <option value="missing">⚪ Missing</option>
                 </select>
               </div>
-
-              {hasFilter && (
-                <div className="flex items-end">
+              <div className="flex items-end">
+                {hasFilter && (
                   <button
                     onClick={clearFilters}
                     className="h-9 cursor-pointer whitespace-nowrap rounded-lg border border-[#dc3545] bg-white px-3.5 text-[13px] text-[#dc3545] hover:bg-red-50"
                   >
                     ✕ Clear
                   </button>
-                </div>
-              )}
-            </>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -466,10 +486,10 @@ export default function Certifications() {
                   type="button"
                   onClick={goBulkAdd}
                   disabled={selectedEmployeeIds.length === 0}
-                  title="อบรมผ่านแล้ว → บันทึก certification เข้าประวัติพนักงาน"
+                  title="อบรมผ่านแล้ว → ไปหน้าบันทึกผลอบรม (คนที่เลือกไว้ติดไปด้วย) แล้วกรอกวันที่ออก / วันหมดอายุ / ไฟล์ cert ที่นั่น"
                   className="cursor-pointer rounded-lg border border-[#198754] bg-white px-4 py-2 text-[13px] font-semibold text-[#198754] hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  ✓ เพิ่ม training ใน CV ของพนักงาน
+                  ✓ เพิ่ม training ใน CV ของพนักงาน →
                 </button>
                 <button
                   type="button"
@@ -491,8 +511,16 @@ export default function Certifications() {
             </div>
           )}
 
-          {/* ════════ Worker list ════════ */}
-          <div className="border-t border-gray-200">
+          <SelectedPeoplePanel
+            variant="bar"
+            items={selectedItems}
+            onRemove={toggleEmployee}
+            onClear={() => setSelectedEmployeeIds([])}
+          />
+
+          {/* ════════ Worker list (ซ้าย) + ที่เลือกไว้ (ขวา, xl+) ════════ */}
+          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0 border-t border-gray-200">
             {/* ── ต่ำกว่า lg: การ์ด ── */}
             <div className="lg:hidden">
               <div className="flex items-center justify-between gap-2 border-b border-gray-200 py-2.5 text-[13px]">
@@ -695,6 +723,14 @@ export default function Certifications() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+            <SelectedPeoplePanel
+              items={selectedItems}
+              onRemove={toggleEmployee}
+              onClear={() => setSelectedEmployeeIds([])}
+              listMaxHeight="max-h-[calc(100vh-300px)]"
+            />
           </div>
         </>
       ) : (

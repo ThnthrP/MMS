@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
+import SelectedPeoplePanel from "../../components/SelectedPeoplePanel";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -246,6 +247,19 @@ export default function BulkAddCertification() {
   const selectedExistingCount = selectedEmployeeIds.filter((id) =>
     existingEmployeeIds.has(id),
   ).length;
+
+  // รายชื่อที่เลือกไว้ (แผงด้านขวา) — ไม่หายตอนค้นหา/กรอง
+  const employeeById = new Map(employees.map((w) => [w.id, w]));
+  const selectedItems = selectedEmployeeIds.map((id) => {
+    const w = employeeById.get(id);
+    return {
+      id,
+      name: w?.fullName || "(ไม่พบในรายชื่อพนักงาน active)",
+      sub: [w?.empCode, w?.position?.name].filter(Boolean).join(" · "),
+      badge: existingEmployeeIds.has(id) ? <ExistingBadge /> : null,
+      hidden: !filteredIdSet.has(id),
+    };
+  });
 
   const dateError =
     issuedDate && expiryDate && expiryDate < issuedDate
@@ -505,35 +519,44 @@ export default function BulkAddCertification() {
               </span>
             )}
           </div>
-          <div>
+          {/* ซ้าย = ตัวกรอง + รายชื่อ · ขวา (xl+) = คนที่เลือกไว้ */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0">
             {/* Filters */}
-            <div className="mb-3 flex flex-col gap-2.5 md:flex-row md:flex-wrap">
-              <input
-                type="text"
-                placeholder="🔍 ค้นหาชื่อ, รหัส..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className={`${INPUT} md:min-w-[200px] md:flex-1`}
-              />
-              <div className="grid grid-cols-2 gap-2.5 md:flex">
+            <div className="mb-3 grid grid-cols-2 gap-2.5 md:grid-cols-[minmax(200px,1fr)_180px_220px]">
+              <div className="col-span-2 md:col-span-1">
+                <label className={LABEL}>ค้นหาพนักงาน</label>
+                <input
+                  type="text"
+                  placeholder="🔍 ชื่อ หรือรหัสพนักงาน (EXPT-xxx / ID)"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className={INPUT}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>แผนก</label>
                 <select
                   value={departmentFilter}
                   onChange={(e) => setDepartmentFilter(e.target.value)}
-                  className={`${INPUT} md:w-[180px]`}
+                  className={INPUT}
                 >
-                  <option value="">All Departments</option>
+                  <option value="">ทุกแผนก</option>
                   {departments.map((d) => (
                     <option key={d} value={d}>
                       {d}
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className={LABEL}>ตำแหน่ง</label>
                 <select
                   value={positionFilter}
                   onChange={(e) => setPositionFilter(e.target.value)}
-                  className={`${INPUT} md:w-[220px]`}
+                  className={INPUT}
                 >
-                  <option value="">All Positions</option>
+                  <option value="">ทุกตำแหน่ง</option>
                   {positions.map((p) => (
                     <option key={p} value={p}>
                       {p}
@@ -566,6 +589,14 @@ export default function BulkAddCertification() {
                 )}
               </div>
             </div>
+
+            <SelectedPeoplePanel
+              variant="bar"
+              items={selectedItems}
+              onRemove={toggleEmployee}
+              onClear={() => setSelectedEmployeeIds([])}
+              disabled={applying}
+            />
 
             {loadingEmployees ? (
               <div className="p-10 text-center text-[13px] text-gray-500">
@@ -672,6 +703,15 @@ export default function BulkAddCertification() {
                 กำลังเช็คพนักงานที่มี certification นี้อยู่แล้ว...
               </div>
             )}
+          </div>
+
+            <SelectedPeoplePanel
+              items={selectedItems}
+              onRemove={toggleEmployee}
+              onClear={() => setSelectedEmployeeIds([])}
+              disabled={applying}
+              listMaxHeight="max-h-[520px]"
+            />
           </div>
         </div>
       )}
