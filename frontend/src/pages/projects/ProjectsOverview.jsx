@@ -38,6 +38,12 @@ const CHIP =
 const TH =
   "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3.5 py-2 text-left text-[11px] font-semibold tracking-[0.4px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
 const TD = "px-3.5 py-3 align-middle";
+// ปุ่มไอคอน (แบบเดียวกับหน้า Trainings) — คอลัมน์ ACTIONS แคบ คอลัมน์ข้อมูลได้พื้นที่มากขึ้น
+//   ชื่อปุ่มอยู่ใน title (hover) + aria-label
+const ICON_BTN =
+  "inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-none text-[13px] no-underline transition-all hover:-translate-y-px disabled:cursor-wait disabled:hover:translate-y-0";
+const ICON_EDIT = `${ICON_BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 
 const toYMD = (d) => {
   const x = new Date(d);
@@ -127,7 +133,19 @@ export default function ProjectsOverview() {
     }
   };
 
-  const deleteBtn = (p, cls) =>
+  const editBtn = (p) => (
+    <Link
+      to={`/projects/${p.id}`}
+      onClick={(e) => e.stopPropagation()}
+      title="แก้ไข requirement (ตำแหน่ง / จำนวนคน / วันที่) ที่หน้า Requirement"
+      aria-label="แก้ไข"
+      className={ICON_EDIT}
+    >
+      ✏️
+    </Link>
+  );
+
+  const deleteBtn = (p) =>
     deletableIds.has(p.id) && (
       <button
         type="button"
@@ -137,9 +155,10 @@ export default function ProjectsOverview() {
         }}
         disabled={deletingId === p.id}
         title="ลบ project นี้ (เฉพาะ project ที่คุณสร้าง)"
-        className={`cursor-pointer rounded-md border border-[#f5c6cb] bg-[#fff5f5] text-xs font-semibold text-[#dc3545] hover:bg-red-50 disabled:cursor-wait disabled:opacity-60 ${cls}`}
+        aria-label="ลบ"
+        className={ICON_DELETE}
       >
-        {deletingId === p.id ? "…" : "🗑 ลบ"}
+        {deletingId === p.id ? "…" : "🗑"}
       </button>
     );
 
@@ -217,6 +236,7 @@ export default function ProjectsOverview() {
   const stages = data.stages || [];
 
   const openDetail = (p) => navigate(`/projects-overview/${p.id}`);
+  const hasDeletable = projects.some((p) => deletableIds.has(p.id));
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
@@ -393,14 +413,8 @@ export default function ProjectsOverview() {
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <StageDots stages={p.stages} />
                       <span className="flex shrink-0 items-center gap-1.5">
-                        <Link
-                          to={`/projects/${p.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="rounded-md border border-[#cfe2ff] bg-[#e7f1ff] px-2.5 py-0.5 text-xs font-semibold text-blue-700 no-underline"
-                        >
-                          ✏️ แก้ไข
-                        </Link>
-                        {deleteBtn(p, "px-2.5 py-0.5")}
+                        {editBtn(p)}
+                        {deleteBtn(p)}
                         <span className="rounded-md border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-700">
                           View →
                         </span>
@@ -428,7 +442,10 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
-                    <th className={`${TH} w-[240px] text-left`}>ACTIONS</th>
+                    {/* กว้างพอดีปุ่ม: View + ✏️ (+ 🗑 ถ้ามี project ที่ลบได้อย่างน้อย 1 แถว) */}
+                    <th className={`${TH} text-left ${hasDeletable ? "w-[170px]" : "w-[134px]"}`}>
+                      ACTIONS
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -488,17 +505,9 @@ export default function ProjectsOverview() {
                             >
                               View →
                             </Link>
-                            {/* แก้ไข requirement ทำที่หน้า Requirement (ตำแหน่ง · จำนวนคน · วันที่)
-                                ลบทั้ง project: เฉพาะ admin ที่เป็นผู้สร้าง (เช่น project ทดลอง/demo) */}
-                            <Link
-                              to={`/projects/${p.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              title="แก้ไข requirement (ตำแหน่ง / จำนวนคน / วันที่) ที่หน้า Requirement"
-                              className="inline-block rounded-md border border-[#cfe2ff] bg-[#e7f1ff] px-3 py-1 text-xs font-semibold text-blue-700 no-underline hover:bg-[#d7e7ff]"
-                            >
-                              ✏️ แก้ไข
-                            </Link>
-                            {deleteBtn(p, "px-3 py-1")}
+                            {/* ✏️ แก้ไข = หน้า Requirement · 🗑 ลบทั้ง project = เฉพาะ admin ที่เป็นผู้สร้าง */}
+                            {editBtn(p)}
+                            {deleteBtn(p)}
                           </div>
                         </td>
                       </tr>
