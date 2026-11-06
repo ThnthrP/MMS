@@ -182,6 +182,7 @@ function BookingsPage({ requestType }) {
   // ความสูงกรอบตาราง = พื้นที่ที่เหลือของจอ (วัดจริง) → เห็นแถบเลขหน้าโดยไม่ต้องเลื่อนทั้งหน้า
   //   หน้า Training มีแท็บด้านบน / filter ขึ้นบรรทัดใหม่ตามความกว้างจอ — ค่าคงที่ใช้ไม่ได้
   const tableBoxRef = useRef(null);
+  const pagerRef = useRef(null);
   const [tableMaxH, setTableMaxH] = useState(null);
 
   const load = useCallback(() => {
@@ -272,14 +273,15 @@ function BookingsPage({ requestType }) {
       const el = tableBoxRef.current;
       if (!el || el.offsetParent === null) return; // ซ่อนอยู่ (มือถือ)
       const top = el.getBoundingClientRect().top;
-      // เผื่อแถบเลขหน้า (~56px) + ระยะขอบล่างของ layout
-      const reserve = totalPages > 1 ? 88 : 32;
+      // เผื่อแถบเลขหน้า (วัดความสูงจริง) + ระยะขอบล่างของ layout
+      //   เดิมเผื่อค่าคงที่ 88px → เหลือที่ว่างใต้แถบเลขหน้า เลื่อนหน้าลงได้อีก
+      const reserve = (pagerRef.current?.offsetHeight || 0) + 20;
       setTableMaxH(Math.max(300, Math.floor(window.innerHeight - top - reserve)));
     };
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [totalPages, loading, hasFilter, isTraining]);
+  }, [totalPages, loading, hasFilter, isTraining, filtered.length]);
 
   // ── เลือกหลายคน (เฉพาะคนที่รอ HR ในผลการกรอง) ──
   const pendingInView = filtered.filter((r) => r.status === "pending");
@@ -827,11 +829,16 @@ function BookingsPage({ requestType }) {
         </div>
 
         {/* ════════ Pagination ════════ */}
-        {totalPages > 1 && (
-          <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-gray-200 py-3 text-xs text-gray-500">
+        {/* แสดงทุกหน้า (Training / Medical) — ปุ่มเลขหน้าขึ้นเฉพาะเมื่อเกิน PAGE_SIZE */}
+        {filtered.length > 0 && (
+          <div
+            ref={pagerRef}
+            className="flex min-h-[54px] flex-wrap items-center justify-between gap-2.5 border-t border-gray-200 py-3 text-xs text-gray-500"
+          >
             <span>
-              หน้า {currentPage} / {totalPages} — ทั้งหมด {filtered.length} คน
+              {totalPages > 1 && `หน้า ${currentPage} / ${totalPages} — `}ทั้งหมด {filtered.length} คน
             </span>
+            {totalPages > 1 && (
             <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
@@ -870,6 +877,7 @@ function BookingsPage({ requestType }) {
                 <span className="hidden sm:inline">ถัดไป </span>→
               </button>
             </div>
+            )}
           </div>
         )}
       </div>

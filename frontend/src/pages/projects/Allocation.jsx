@@ -2480,8 +2480,12 @@ export default function Allocation() {
                         </span>
                       </div>
 
-                      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                        <div className="w-full min-w-[220px] sm:w-[280px]">
+                      {/* แถว 1: ตำแหน่ง (ยืดเต็มที่เหลือ) + Type + Sort · แถว 2: กรองในรายการ */}
+                      <div className="mb-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+                        <div className="w-full min-w-[240px] flex-1 sm:w-auto">
+                          <label className="mb-1 block text-xs text-gray-500">
+                            ตำแหน่งปัจจุบันของพนักงาน
+                          </label>
                           <Select
                             {...SELECT_PORTAL}
                             options={positionFilterOptions}
@@ -2518,13 +2522,18 @@ export default function Allocation() {
                           onChange={setSortBy}
                           activeClass="border-blue-600 bg-blue-600 text-white"
                         />
-                        <div className="relative min-w-[180px] flex-1 sm:max-w-[260px]">
+                      </div>
+                      <div className="mb-3 w-full sm:max-w-[420px]">
+                        <label className="mb-1 block text-xs text-gray-500">
+                          กรองในรายการนี้ (ชื่อ / Employee ID)
+                        </label>
+                        <div className="relative">
                           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-gray-400">
                             🔍
                           </span>
                           <input
                             type="text"
-                            placeholder="กรองในรายการนี้..."
+                            placeholder="พิมพ์เพื่อกรองรายชื่อด้านล่าง..."
                             value={workerSearch}
                             onChange={(e) => setWorkerSearch(e.target.value)}
                             className="box-border w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-8 pr-7 text-[13px] outline-none focus:border-blue-400"
