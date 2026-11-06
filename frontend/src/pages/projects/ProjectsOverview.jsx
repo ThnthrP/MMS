@@ -1,4 +1,11 @@
-import { useState, useEffect, useContext, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useContext,
+  useMemo,
+  useRef,
+} from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
@@ -66,6 +73,11 @@ export default function ProjectsOverview() {
   const [clientFilter, setClientFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
 
+  // ตารางเลื่อนในกรอบตัวเอง (หัวคอลัมน์ตรึงไว้) — สูงเท่าพื้นที่ที่เหลือของจอ (วัดจริง)
+  //   filter ขึ้นบรรทัดใหม่ตามความกว้างจอ — ใช้ค่าคงที่ไม่ได้
+  const tableBoxRef = useRef(null);
+  const [tableMaxH, setTableMaxH] = useState(null);
+
   useEffect(() => {
     axios
       .get(`${backendUrl}/api/supervisor/projects-overview`, {
@@ -107,6 +119,18 @@ export default function ProjectsOverview() {
 
   const hasFilter =
     search || dateFrom || dateTo || clientFilter || stageFilter;
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = tableBoxRef.current;
+      if (!el || el.offsetParent === null) return; // ซ่อนอยู่ (จอเล็กกว่า xl ใช้การ์ด)
+      const top = el.getBoundingClientRect().top;
+      setTableMaxH(Math.max(320, Math.floor(window.innerHeight - top - 24)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [loading, hasFilter, activeTab]);
 
   const resetFilters = () => {
     setSearch("");
@@ -313,8 +337,17 @@ export default function ProjectsOverview() {
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <StageDots stages={p.stages} />
-                      <span className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                        View →
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <Link
+                          to={`/projects/${p.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded-md border border-[#cfe2ff] bg-[#e7f1ff] px-2.5 py-0.5 text-xs font-semibold text-blue-700 no-underline"
+                        >
+                          ✏️ แก้ไข
+                        </Link>
+                        <span className="rounded-md border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                          View →
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -323,7 +356,11 @@ export default function ProjectsOverview() {
             </div>
 
             {/* ── xl+: ตาราง ── */}
-            <div className="hidden overflow-x-auto xl:block">
+            <div
+              ref={tableBoxRef}
+              style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
+              className="hidden max-h-[calc(100vh-360px)] overflow-auto xl:block"
+            >
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr>
@@ -335,7 +372,7 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
-                    <th className={`${TH} w-[110px] text-center`}>ACTIONS</th>
+                    <th className={`${TH} w-[190px] text-center`}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -385,14 +422,26 @@ export default function ProjectsOverview() {
                           <StageDots stages={p.stages} />
                         </td>
                         <td className={`${TD} whitespace-nowrap text-center`}>
-                          <Link
-                            to={`/projects-overview/${p.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            title="ดู timeline ขั้นตอน + ตารางวันทำงานรายคน"
-                            className="inline-block rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                          >
-                            View →
-                          </Link>
+                          <div className="inline-flex items-center gap-1.5">
+                            <Link
+                              to={`/projects-overview/${p.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              title="ดู timeline ขั้นตอน + ตารางวันทำงานรายคน"
+                              className="inline-block rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                              View →
+                            </Link>
+                            {/* แก้ไข/ลบ requirement ทำที่หน้า Requirement (ตำแหน่ง · จำนวนคน · วันที่)
+                                หน้านี้เป็นหน้าติดตามอย่างเดียว — ไม่ลบจากที่นี่ เพราะ requirement มีรายชื่อ/คำขอ/การลงงานผูกอยู่ */}
+                            <Link
+                              to={`/projects/${p.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              title="แก้ไข requirement (ตำแหน่ง / จำนวนคน / วันที่) ที่หน้า Requirement"
+                              className="inline-block rounded-md border border-[#cfe2ff] bg-[#e7f1ff] px-3 py-1 text-xs font-semibold text-blue-700 no-underline hover:bg-[#d7e7ff]"
+                            >
+                              ✏️ แก้ไข
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
