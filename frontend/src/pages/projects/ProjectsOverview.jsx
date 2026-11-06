@@ -78,6 +78,11 @@ export default function ProjectsOverview() {
   const tableBoxRef = useRef(null);
   const [tableMaxH, setTableMaxH] = useState(null);
 
+  // project ที่ผู้ใช้คนนี้ลบได้ (admin + เป็นผู้สร้าง) — backend ตัดสิน และเช็คซ้ำตอนลบ
+  const [deletableIds, setDeletableIds] = useState(() => new Set());
+  const [deletingId, setDeletingId] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
     axios
       .get(`${backendUrl}/api/supervisor/projects-overview`, {
@@ -86,7 +91,57 @@ export default function ProjectsOverview() {
       .then((res) => setData(res.data))
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, [backendUrl]);
+    axios
+      .get(`${backendUrl}/api/projects/deletable`, { withCredentials: true })
+      .then((res) => setDeletableIds(new Set(res.data?.ids || [])))
+      .catch(() => setDeletableIds(new Set())); // ไม่ critical — แค่ไม่แสดงปุ่มลบ
+  }, [backendUrl, reloadKey]);
+
+  // ลบทั้ง project (ทุกตำแหน่ง รายชื่อ คำขอ PE booking การลงงาน ข้อความ)
+  //   ให้พิมพ์ ON Number ยืนยัน กันกดพลาด
+  const deleteProject = async (p) => {
+    const code = projectCode(p) || p.name;
+    const need = sum(p.requests, (r) => r.quantity);
+    const typed = window.prompt(
+      `ลบ project "${code} ${p.name}" ทั้งหมด?\n\n` +
+        `• ${p.requests.length} ตำแหน่ง (ต้องการ ${need} คน)\n` +
+        `• ลงงานแล้ว ${p.employees.length} คน\n` +
+        "• รายชื่อ / คำขอ PE / checklist / การลงงาน / ข้อความ ของ project นี้จะถูกลบด้วย\n\n" +
+        `ลบแล้วกู้คืนไม่ได้ — พิมพ์ ${code} เพื่อยืนยัน`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== code) {
+      alert("พิมพ์ไม่ตรง — ยกเลิกการลบ");
+      return;
+    }
+    try {
+      setDeletingId(p.id);
+      await axios.delete(`${backendUrl}/api/projects/${p.id}`, {
+        withCredentials: true,
+      });
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      alert(err.response?.data?.message || "ลบไม่สำเร็จ");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const deleteBtn = (p, cls) =>
+    deletableIds.has(p.id) && (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          deleteProject(p);
+        }}
+        disabled={deletingId === p.id}
+        title="ลบ project นี้ (เฉพาะ project ที่คุณสร้าง)"
+        className={`cursor-pointer rounded-md border border-[#f5c6cb] bg-[#fff5f5] text-xs font-semibold text-[#dc3545] hover:bg-red-50 disabled:cursor-wait disabled:opacity-60 ${cls}`}
+      >
+        {deletingId === p.id ? "…" : "🗑 ลบ"}
+      </button>
+    );
 
   const stageKeyOf = (p) => p.currentStage?.key || "complete";
 
@@ -345,6 +400,7 @@ export default function ProjectsOverview() {
                         >
                           ✏️ แก้ไข
                         </Link>
+                        {deleteBtn(p, "px-2.5 py-0.5")}
                         <span className="rounded-md border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-700">
                           View →
                         </span>
@@ -372,7 +428,7 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
-                    <th className={`${TH} w-[190px] text-center`}>ACTIONS</th>
+                    <th className={`${TH} w-[240px] text-center`}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -431,8 +487,8 @@ export default function ProjectsOverview() {
                             >
                               View →
                             </Link>
-                            {/* แก้ไข/ลบ requirement ทำที่หน้า Requirement (ตำแหน่ง · จำนวนคน · วันที่)
-                                หน้านี้เป็นหน้าติดตามอย่างเดียว — ไม่ลบจากที่นี่ เพราะ requirement มีรายชื่อ/คำขอ/การลงงานผูกอยู่ */}
+                            {/* แก้ไข requirement ทำที่หน้า Requirement (ตำแหน่ง · จำนวนคน · วันที่)
+                                ลบทั้ง project: เฉพาะ admin ที่เป็นผู้สร้าง (เช่น project ทดลอง/demo) */}
                             <Link
                               to={`/projects/${p.id}`}
                               onClick={(e) => e.stopPropagation()}
@@ -441,6 +497,7 @@ export default function ProjectsOverview() {
                             >
                               ✏️ แก้ไข
                             </Link>
+                            {deleteBtn(p, "px-3 py-1")}
                           </div>
                         </td>
                       </tr>

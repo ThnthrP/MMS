@@ -65,11 +65,45 @@ export async function updateProject(req, res) {
   }
 }
 
+// GET /api/projects/deletable — id ของ project ที่ผู้ใช้คนนี้ลบได้ (admin + เป็นผู้สร้าง)
+export async function getDeletableProjects(req, res) {
+  try {
+    const ids = await service.getDeletableProjectIds(req.user?.id);
+    res.json({ ids });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+}
+
+// DELETE /api/projects/:id — เฉพาะ admin ที่เป็นผู้สร้าง project (ดูจาก Audit Log)
 export async function deleteProject(req, res) {
   try {
+    const project = await service.assertCanDeleteProject(
+      req.params.id,
+      req.user?.id,
+    );
+    // ให้ Audit Log อ่านออกว่าลบอะไร (ON + ชื่อ + จำนวนที่ผูกอยู่)
+    const code = project.masterProjectRecord?.projectCode;
+    req.audit = {
+      ...(req.audit || {}),
+      summary: `ลบ project ${code ? `${code} ` : ""}${project.name}`,
+      extra: {
+        projectCode: code || null,
+        name: project.name,
+        positions: project._count.requests,
+        assignments: project._count.assignments,
+      },
+    };
     await service.deleteProject(req.params.id);
     res.json({ message: "Project deleted successfully" });
   } catch (error) {
+    if (error.code === "FORBIDDEN") {
+      return res.status(403).json({ message: error.message });
+    }
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "Project not found" });
+    }
     console.error(error);
     res.status(500).json({ message: "Failed to delete project" });
   }
@@ -77,9 +111,17 @@ export async function deleteProject(req, res) {
 
 export async function addProjectRequest(req, res) {
   try {
-    const request = await service.addProjectRequest(req.params.id, req.body);
+    // ส่งผู้ใช้ที่ login อยู่ → REQUESTED BY แสดงชื่อคนเพิ่มตำแหน่งจริง
+    const request = await service.addProjectRequest(
+      req.params.id,
+      req.body,
+      req.user?.id,
+    );
     res.status(201).json(request);
   } catch (error) {
+    if (error.code === "USER_REQUIRED") {
+      return res.status(401).json({ message: error.message });
+    }
     console.error(error);
     res.status(500).json({ message: "Failed to add position request" });
   }

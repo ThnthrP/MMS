@@ -156,6 +156,100 @@ export async function updateProject(id, data) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// ใครสร้าง project — ตาราง Project ไม่มี createdById จึงหาจาก AuditLog
+//   1) POST /api/projects ที่ resourceId = project.id (auditTrail หยิบ id จาก response)
+//   2) ถ้าไม่เจอ → POST /api/projects/:id/requests ครั้งแรก (การ์ด New requirement
+//      สร้าง project แล้วเพิ่มตำแหน่งต่อทันที โดยคนเดียวกัน)
+// project ที่สร้างก่อนเปิด Audit Log → ไม่รู้ผู้สร้าง = ลบผ่านปุ่มนี้ไม่ได้
+// ════════════════════════════════════════════════════════════════
+export async function getProjectCreators(projectIds) {
+  const ids = [...new Set(projectIds.map(String))];
+  if (ids.length === 0) return new Map();
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      method: "POST",
+      success: true,
+      userId: { not: null },
+      OR: [
+        { path: "/api/projects", resourceId: { in: ids } },
+        { path: { in: ids.map((id) => `/api/projects/${id}/requests`) } },
+      ],
+    },
+    select: { userId: true, path: true, resourceId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const fromCreate = new Map();
+  const fromRequest = new Map();
+  for (const l of logs) {
+    if (l.path === "/api/projects") {
+      if (!fromCreate.has(l.resourceId)) fromCreate.set(l.resourceId, l.userId);
+    } else {
+      const pid = l.path.split("/")[3];
+      if (!fromRequest.has(pid)) fromRequest.set(pid, l.userId);
+    }
+  }
+  const out = new Map();
+  ids.forEach((id) => {
+    const u = fromCreate.get(id) || fromRequest.get(id);
+    if (u) out.set(id, u);
+  });
+  return out;
+}
+
+// admin = role หลักเท่านั้น (ตาม README: admin ต้องเป็น role หลัก)
+async function isAdmin(userId) {
+  if (!userId) return false;
+  const u = await prisma.user.findUnique({
+    where: { id: String(userId) },
+    select: { role: { select: { name: true } } },
+  });
+  return u?.role?.name === "admin";
+}
+
+// project ที่ user คนนี้ลบได้ = เป็น admin และเป็นคนสร้าง project นั้นเอง
+export async function getDeletableProjectIds(userId) {
+  if (!(await isAdmin(userId))) return [];
+  const projects = await prisma.project.findMany({ select: { id: true } });
+  const creators = await getProjectCreators(projects.map((p) => p.id));
+  return projects
+    .map((p) => p.id)
+    .filter((id) => creators.get(id) === String(userId));
+}
+
+export async function assertCanDeleteProject(projectId, userId) {
+  const project = await prisma.project.findUnique({
+    where: { id: String(projectId) },
+    select: {
+      id: true,
+      name: true,
+      masterProjectRecord: { select: { projectCode: true } },
+      _count: { select: { requests: true, assignments: true } },
+    },
+  });
+  if (!project) {
+    const e = new Error("Project not found");
+    e.code = "P2025";
+    throw e;
+  }
+  if (!(await isAdmin(userId))) {
+    const e = new Error("ลบ project ได้เฉพาะ admin ที่เป็นผู้สร้าง project นั้น");
+    e.code = "FORBIDDEN";
+    throw e;
+  }
+  const creators = await getProjectCreators([project.id]);
+  if (creators.get(project.id) !== String(userId)) {
+    const e = new Error(
+      creators.has(project.id)
+        ? "ลบไม่ได้ — project นี้ไม่ได้สร้างโดยคุณ"
+        : "ลบไม่ได้ — ไม่พบประวัติผู้สร้าง project นี้ใน Audit Log",
+    );
+    e.code = "FORBIDDEN";
+    throw e;
+  }
+  return project;
+}
+
 export async function deleteProject(id) {
   const projectId = String(id);
 
@@ -190,6 +284,21 @@ export async function deleteProject(id) {
     });
     const subReqIds = subReqs.map((s) => s.id);
 
+    // คำขอ PE / ประวัติการตอบรับงาน / PPE & ข้อสอบที่ผูก booking — เดิมไม่ได้ลบ → ติด FK (P2003)
+    await tx.matchExceptionRequest.deleteMany({
+      where: { manpowerRequestId: { in: requestIds } },
+    });
+    await tx.jobConfirmationEvent.deleteMany({
+      where: { candidateId: { in: candidateIds } },
+    });
+    await tx.pPERequest.updateMany({
+      where: { bookingId: { in: bookingIds } },
+      data: { bookingId: null },
+    });
+    await tx.safetyExamAttempt.updateMany({
+      where: { bookingId: { in: bookingIds } },
+      data: { bookingId: null },
+    });
     await tx.candidateGap.deleteMany({
       where: { candidateId: { in: candidateIds } },
     });
@@ -231,11 +340,15 @@ export async function deleteProject(id) {
 }
 
 // ─── Add ManpowerRequest to Project ───
-export async function addProjectRequest(projectId, data) {
+// requestedById = คนที่ login อยู่ (controller ส่ง req.user.id มา)
+//   เดิมใช้ prisma.user.findFirst() → ทุกตำแหน่งขึ้น "System Admin" (user คนแรกใน DB)
+export async function addProjectRequest(projectId, data, userId) {
   const { positionId, quantity } = data;
-
-  // ชั่วคราว: ใช้ user แรกใน DB จนกว่าจะมี auth middleware ส่ง req.user
-  const firstUser = await prisma.user.findFirst();
+  if (!userId) {
+    const e = new Error("ไม่พบผู้ใช้ที่ login อยู่");
+    e.code = "USER_REQUIRED";
+    throw e;
+  }
 
   return prisma.manpowerRequest.create({
     data: {
@@ -244,7 +357,7 @@ export async function addProjectRequest(projectId, data) {
       quantity: Number(quantity),
       status: "draft",
       selectionMode: "manual",
-      requestedById: firstUser.id,
+      requestedById: userId,
     },
     include: {
       position: true,
@@ -288,8 +401,21 @@ export async function deleteProjectRequest(projectId, requestId) {
   const roundIds = reqRow.rounds.map((r) => r.id);
 
   return prisma.$transaction(async (tx) => {
+    // คำขอ PE ของตำแหน่งนี้ — เดิมไม่ได้ลบ → ลบตำแหน่งที่เคยขอ PE ไม่ได้ (P2003)
+    await tx.matchExceptionRequest.deleteMany({
+      where: { manpowerRequestId: String(requestId) },
+    });
+
     // 0) ลบ shim booking (checklist) ทิ้งไปก่อน — cascade MobilizationTask ด้วย
     if (shimBookingIds.length > 0) {
+      await tx.pPERequest.updateMany({
+        where: { bookingId: { in: shimBookingIds } },
+        data: { bookingId: null },
+      });
+      await tx.safetyExamAttempt.updateMany({
+        where: { bookingId: { in: shimBookingIds } },
+        data: { bookingId: null },
+      });
       await tx.mobilizationTask.deleteMany({
         where: { bookingId: { in: shimBookingIds } },
       });
@@ -307,6 +433,9 @@ export async function deleteProjectRequest(projectId, requestId) {
       const candIds = cands.map((c) => c.id);
 
       if (candIds.length > 0) {
+        await tx.jobConfirmationEvent.deleteMany({
+          where: { candidateId: { in: candIds } },
+        });
         await tx.candidateGap.deleteMany({
           where: { candidateId: { in: candIds } },
         });
