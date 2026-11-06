@@ -255,7 +255,9 @@ export default function BulkAddCertification() {
     return {
       id,
       name: w?.fullName || "(ไม่พบในรายชื่อพนักงาน active)",
-      sub: [w?.empCode, w?.position?.name].filter(Boolean).join(" · "),
+      sub: [w?.empId || w?.empCode, w?.position?.name]
+        .filter(Boolean)
+        .join(" · "),
       badge: existingEmployeeIds.has(id) ? <ExistingBadge /> : null,
       hidden: !filteredIdSet.has(id),
     };
@@ -528,7 +530,7 @@ export default function BulkAddCertification() {
                 <label className={LABEL}>ค้นหาพนักงาน</label>
                 <input
                   type="text"
-                  placeholder="🔍 ชื่อ หรือรหัสพนักงาน (EXPT-xxx / ID)"
+                  placeholder="🔍 ชื่อ หรือรหัสพนักงาน"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className={INPUT}
@@ -607,15 +609,20 @@ export default function BulkAddCertification() {
                 <table className="w-full border-collapse text-[13px]">
                   <thead>
                     <tr>
-                      <th className={`${TH} w-9`}>
-                        <input
-                          type="checkbox"
-                          checked={allFilteredSelected}
-                          onChange={toggleAllFiltered}
-                          disabled={applying}
-                          className={CHECKBOX}
-                          title="เลือก/ยกเลิกทั้งหมดที่แสดงอยู่"
-                        />
+                      <th className={`${TH} w-[120px]`}>
+                        <label
+                          className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold text-gray-600"
+                          title="เลือก/ยกเลิกทุกคนที่แสดงอยู่ตามตัวกรอง"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={allFilteredSelected}
+                            onChange={toggleAllFiltered}
+                            disabled={applying}
+                            className={CHECKBOX}
+                          />
+                          เลือกทั้งหมด
+                        </label>
                       </th>
                       <th className={TH}>EMPLOYEE</th>
                       <th className={`${TH} ${HIDE_MOBILE}`}>POSITION</th>
@@ -660,7 +667,8 @@ export default function BulkAddCertification() {
                             <td className="px-3.5 py-2.5">
                               <div className="font-semibold">{w.fullName}</div>
                               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
-                                {w.empCode}
+                                {/* รหัสพนักงานฝั่ง client (empId) — ไม่มีค่อยใช้ empCode */}
+                                {w.empId || w.empCode}
                                 {/* มือถือ: ตำแหน่ง/แผนก + badge ต่อท้ายใต้ชื่อ */}
                                 <span className="md:hidden">
                                   · {w.position?.name || "—"}

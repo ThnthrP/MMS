@@ -2,7 +2,7 @@ import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import RequestBookingModal from "./RequestBookingModal";
 import SelectedPeoplePanel from "../../components/SelectedPeoplePanel";
 import { nameEN, nameTH } from "../../utils/workerSearch";
@@ -128,16 +128,8 @@ export default function Certifications() {
   const { backendUrl } = useContext(AppContent);
   const [searchParams] = useSearchParams();
 
-  const navigate = useNavigate();
-
-  // ไปหน้าบันทึกผลอบรม โดยเลือกหลักสูตร + พนักงานที่ติ๊กไว้ให้แล้ว
-  const goBulkAdd = () => {
-    const qs = new URLSearchParams({
-      trainingId: selectedTraining.value,
-      empIds: selectedEmployeeIds.join(","),
-    });
-    navigate(`/certifications/bulk-add?${qs}`);
-  };
+  // หน้านี้ = ดูสถานะ cert + แจ้ง HR ให้จัด training เท่านั้น
+  // บันทึกผลอบรม (วันที่ออก / หมดอายุ / ไฟล์ cert) ทำที่หน้า Bulk Add ที่เดียว
 
   // สิทธิ์ถูกคุมที่ AppRouter แล้ว
   const canRequestTraining = true;
@@ -473,24 +465,14 @@ export default function Certifications() {
                 </span>
               ) : (
                 <span className="text-[13px] text-gray-600">
-                  ติ๊ก ☐ หน้าชื่อพนักงาน (หรือคลิกที่แถว) แล้วเลือก{" "}
-                  <strong>เพิ่ม training ใน CV</strong> (อบรมผ่านแล้ว) หรือ{" "}
-                  <strong>แจ้ง HR ให้จัด Training</strong> (ยังไม่ได้อบรม) — ☐{" "}
+                  ติ๊ก ☐ หน้าชื่อพนักงาน (หรือคลิกที่แถว) แล้วกด{" "}
+                  <strong>แจ้ง HR ให้จัด Training</strong> — ☐{" "}
                   <strong>เลือกทั้งหมด</strong> ที่หัวตาราง =
                   ทุกคนที่แสดงอยู่ตาม filter
                 </span>
               )}
               {/* เปิดการ์ด Request training ที่กรอกหลักสูตร + คนไว้ให้แล้ว — ใส่วันที่ / สถานที่ต่อได้ */}
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={goBulkAdd}
-                  disabled={selectedEmployeeIds.length === 0}
-                  title="อบรมผ่านแล้ว → ไปหน้าบันทึกผลอบรม (คนที่เลือกไว้ติดไปด้วย) แล้วกรอกวันที่ออก / วันหมดอายุ / ไฟล์ cert ที่นั่น"
-                  className="cursor-pointer rounded-lg border border-[#198754] bg-white px-4 py-2 text-[13px] font-semibold text-[#198754] hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  ✓ เพิ่ม training ใน CV ของพนักงาน →
-                </button>
                 <button
                   type="button"
                   onClick={() => setRequestOpen(true)}
