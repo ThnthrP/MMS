@@ -42,7 +42,13 @@ const TD = "px-3.5 py-3 align-middle";
 //   ชื่อปุ่มอยู่ใน title (hover) + aria-label
 const ICON_BTN =
   "inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border-none text-[13px] no-underline transition-all hover:-translate-y-px disabled:cursor-wait disabled:hover:translate-y-0";
-const ICON_EDIT = `${ICON_BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
+// ปุ่มข้อความ 2 ปุ่ม — บอกชัดว่าไปหน้าไหน (คำเดียวกับปุ่มบนหัวหน้า Timeline / หน้า Projects)
+//   Timeline    = หน้านี้ฉบับละเอียด (ProjectCalendarDetail) — ขั้นตอน + ตารางวันทำงานรายคน
+//   Requirement = หน้า ProjectDetail — แก้ตำแหน่ง / จำนวนคน / วันที่ / คุยกับ PE / ลบ
+const BTN_TIMELINE =
+  "inline-block whitespace-nowrap rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700";
+const BTN_REQUIREMENT =
+  "inline-block whitespace-nowrap rounded-md border border-[#b6d4fe] bg-[#e7f1ff] px-2.5 py-1 text-xs font-semibold text-blue-700 no-underline hover:bg-blue-600 hover:text-white";
 const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 
 const toYMD = (d) => {
@@ -133,15 +139,25 @@ export default function ProjectsOverview() {
     }
   };
 
-  const editBtn = (p) => (
+  const timelineBtn = (p) => (
+    <Link
+      to={`/projects-overview/${p.id}`}
+      onClick={(e) => e.stopPropagation()}
+      title="ดู timeline ขั้นตอน + ตารางวันทำงานรายคน"
+      className={BTN_TIMELINE}
+    >
+      Timeline
+    </Link>
+  );
+
+  const requirementBtn = (p) => (
     <Link
       to={`/projects/${p.id}`}
       onClick={(e) => e.stopPropagation()}
-      title="แก้ไข requirement (ตำแหน่ง / จำนวนคน / วันที่) ที่หน้า Requirement"
-      aria-label="แก้ไข"
-      className={ICON_EDIT}
+      title="หน้ารายละเอียด requirement — แก้ตำแหน่ง / จำนวนคน / วันที่ / คุยกับ PE"
+      className={BTN_REQUIREMENT}
     >
-      ✏️
+      Requirement
     </Link>
   );
 
@@ -244,8 +260,8 @@ export default function ProjectsOverview() {
       <div className="pb-3">
         <h1 className="m-0 text-lg font-bold">Manpower Calendar</h1>
         <div className="text-xs text-gray-500">
-          ติดตามทุก requirement ว่าอยู่ขั้นตอนไหน · กด View (หรือกดที่แถว) เพื่อดู
-          timeline ขั้นตอนและตารางวันทำงานรายคน
+          ติดตามทุก requirement ว่าอยู่ขั้นตอนไหน · <b>Timeline</b> (หรือกดที่แถว) =
+          ขั้นตอนและตารางวันทำงานรายคน · <b>Requirement</b> = แก้ตำแหน่ง / จำนวนคน / วันที่
         </div>
       </div>
 
@@ -413,11 +429,9 @@ export default function ProjectsOverview() {
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <StageDots stages={p.stages} />
                       <span className="flex shrink-0 items-center gap-1.5">
-                        {editBtn(p)}
+                        {timelineBtn(p)}
+                        {requirementBtn(p)}
                         {deleteBtn(p)}
-                        <span className="rounded-md border border-gray-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-gray-700">
-                          View →
-                        </span>
                       </span>
                     </div>
                   </div>
@@ -442,8 +456,8 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
-                    {/* กว้างพอดีปุ่ม: View + ✏️ (+ 🗑 ถ้ามี project ที่ลบได้อย่างน้อย 1 แถว) */}
-                    <th className={`${TH} text-left ${hasDeletable ? "w-[170px]" : "w-[134px]"}`}>
+                    {/* กว้างพอดีปุ่ม: Timeline + Requirement (+ 🗑 ถ้ามี project ที่ลบได้อย่างน้อย 1 แถว) */}
+                    <th className={`${TH} text-left ${hasDeletable ? "w-[240px]" : "w-[206px]"}`}>
                       ACTIONS
                     </th>
                   </tr>
@@ -494,19 +508,12 @@ export default function ProjectsOverview() {
                         <td className={TD}>
                           <StageDots stages={p.stages} />
                         </td>
-                        {/* ชิดซ้าย — View / แก้ไข ตรงกันทุกแถว ไม่ว่าแถวนั้นจะมีปุ่มลบหรือไม่ */}
+                        {/* ชิดซ้าย — Timeline / Requirement ตรงกันทุกแถว ไม่ว่าแถวนั้นจะมีปุ่มลบหรือไม่ */}
                         <td className={`${TD} whitespace-nowrap text-left`}>
                           <div className="inline-flex items-center gap-1.5">
-                            <Link
-                              to={`/projects-overview/${p.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              title="ดู timeline ขั้นตอน + ตารางวันทำงานรายคน"
-                              className="inline-block rounded-md border border-gray-300 bg-white px-3 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700"
-                            >
-                              View →
-                            </Link>
-                            {/* ✏️ แก้ไข = หน้า Requirement · 🗑 ลบทั้ง project = เฉพาะ admin ที่เป็นผู้สร้าง */}
-                            {editBtn(p)}
+                            {timelineBtn(p)}
+                            {/* 🗑 ลบทั้ง project = เฉพาะ admin ที่เป็นผู้สร้าง */}
+                            {requirementBtn(p)}
                             {deleteBtn(p)}
                           </div>
                         </td>

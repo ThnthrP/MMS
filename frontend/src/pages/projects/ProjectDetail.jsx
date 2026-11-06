@@ -3,6 +3,12 @@ import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom"
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
+import {
+  TravelModeField,
+  splitTravel,
+  joinTravel,
+  DEFAULT_RESPONSE_DAYS,
+} from "./NewRequirementModal";
 
 // ── role badge (สีเดียวกับ AdminUsers.jsx) ──
 const ROLE_CLASS = {
@@ -127,6 +133,9 @@ export default function ProjectDetail() {
     startDate: "",
     endDate: "",
     isOffshore: false,
+    travelMode: "",
+    travelOther: "",
+    responseDays: String(DEFAULT_RESPONSE_DAYS),
     notes: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -140,6 +149,9 @@ export default function ProjectDetail() {
       startDate: project.startDate ? project.startDate.slice(0, 10) : "",
       endDate: project.endDate ? project.endDate.slice(0, 10) : "",
       isOffshore: project.isOffshore ?? false,
+      // วิธีเดินทาง / ระยะเวลาตอบรับ — เดิมแก้ได้แค่ใน modal ของหน้า Projects (ย้ายมาที่นี่ที่เดียว)
+      ...splitTravel(project.travelMode),
+      responseDays: String(project.responseDays ?? DEFAULT_RESPONSE_DAYS),
       notes: project.notes || "",
     });
     setEditingOpen(true);
@@ -157,6 +169,8 @@ export default function ProjectDetail() {
           startDate: editForm.startDate || null,
           endDate: editForm.endDate || null,
           isOffshore: editForm.isOffshore,
+          travelMode: joinTravel(editForm),
+          responseDays: Number(editForm.responseDays) || DEFAULT_RESPONSE_DAYS,
           notes: editForm.notes || null,
         },
         { withCredentials: true },
@@ -1220,6 +1234,29 @@ export default function ProjectDetail() {
                   }
                   className={INPUT}
                 />
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <TravelModeField form={editForm} setForm={setEditForm} />
+              <div>
+                <label className={LABEL}>พนักงานต้องตอบรับภายใน (วัน)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={editForm.responseDays}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      responseDays: e.target.value,
+                    }))
+                  }
+                  className={INPUT}
+                />
+                <div className="mt-1 text-[11px] text-gray-400">
+                  นับจากวันที่ approve ที่หน้า Assign Names — แสดงให้พนักงานเห็นใน
+                  Worker App
+                </div>
               </div>
             </div>
             <div className="mt-4">

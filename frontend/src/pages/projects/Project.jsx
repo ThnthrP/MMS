@@ -2,12 +2,8 @@ import { useState, useEffect, useContext } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { Link, useNavigate } from "react-router-dom";
-import NewRequirementModal, {
-  TravelModeField,
-  splitTravel,
-  joinTravel,
-  DEFAULT_RESPONSE_DAYS,
-} from "./NewRequirementModal";
+import NewRequirementModal from "./NewRequirementModal";
+import { StageBadge } from "./calendarShared";
 
 // ══════════════════════════════════════════════════════════
 // Projects (ON Number) — Master Project Register
@@ -49,11 +45,22 @@ const TABLE_HEADERS = [
 // ── Tailwind class ที่ใช้ซ้ำ (แทน inputStyle / labelStyle / btnBase เดิม) ──
 const INPUT =
   "w-full box-border rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-blue-400";
-const LABEL = "mb-1.5 block text-[13px] font-semibold";
 const BTN =
   "inline-flex items-center justify-center whitespace-nowrap rounded-md border-none text-xs font-semibold transition-all cursor-pointer disabled:cursor-not-allowed";
 const LIFT_WHITE =
   "bg-white shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] hover:shadow-[0_3px_6px_rgba(0,0,0,0.18),0_2px_3px_rgba(0,0,0,0.1)] hover:-translate-y-px";
+// ปุ่มเดียวกับหน้า Manpower Calendar — Requirement = ProjectDetail · Timeline = ProjectCalendarDetail
+const BTN_TIMELINE =
+  "inline-block whitespace-nowrap rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700";
+const BTN_REQUIREMENT =
+  "inline-block whitespace-nowrap rounded-md border border-[#b6d4fe] bg-[#e7f1ff] px-2.5 py-1 text-xs font-semibold text-blue-700 no-underline hover:bg-blue-600 hover:text-white";
+// สถานะตามแท็บของหน้า Manpower Calendar
+const PERIOD_TAG = {
+  inProgress: ["🟢 กำลังดำเนินการ", "bg-emerald-50 text-emerald-800"],
+  upcoming: ["🔵 กำลังจะเริ่ม", "bg-blue-50 text-blue-800"],
+  completed: ["⚪ จบแล้ว", "bg-gray-100 text-gray-600"],
+};
+const PERIOD_ORDER = { inProgress: 0, upcoming: 1, completed: 2 };
 const LIFT_BLUE =
   "bg-blue-600 text-white shadow-[0_2px_5px_rgba(13,110,253,0.35)] hover:shadow-[0_4px_8px_rgba(13,110,253,0.45)] hover:-translate-y-px";
 const MODAL_HEAD =
@@ -142,19 +149,9 @@ export default function Project() {
   const [clients, setClients] = useState([]);
   const [viewingRecord, setViewingRecord] = useState(null);
   const [linkedProjectsModal, setLinkedProjectsModal] = useState(null);
-  const [editingProject, setEditingProject] = useState(null);
-  const [editForm, setEditForm] = useState({
-    location: "",
-    startDate: "",
-    endDate: "",
-    isOffshore: false,
-    travelMode: "",
-    travelOther: "",
-    responseDeadline: "",
-    notes: "",
-  });
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
+  // ข้อมูลจากหน้า Manpower Calendar (ขั้นตอน / จำนวนคน / แท็บ) — โหลดตอนเปิดรายการ requirement
+  //   ไม่ critical: ถ้าโหลดไม่ได้ ก็ยังแสดงชื่อ / วันที่ / ปุ่มได้ตามเดิม
+  const [overviewById, setOverviewById] = useState(null);
 
   // ── New manpower requirement (การ์ดใช้ร่วมกับหน้า Manpower Requirements) ──
   // null = ปิด / { record } = เปิด (record = ON Number ที่เลือกไว้ให้ ถ้ามี)
@@ -213,6 +210,23 @@ export default function Project() {
     if (activeYear !== null) fetchRecords(activeYear, page, searchQuery);
   }, [activeYear, page, searchQuery]);
 
+  useEffect(() => {
+    if (!linkedProjectsModal || overviewById) return;
+    axios
+      .get(`${backendUrl}/api/supervisor/projects-overview`, { withCredentials: true })
+      .then((res) => {
+        const m = new Map();
+        Object.keys(PERIOD_TAG).forEach((tab) =>
+          (res.data?.[tab] || []).forEach((p) => m.set(p.id, { ...p, tab })),
+        );
+        setOverviewById(m);
+      })
+      .catch((err) => {
+        console.error(err);
+        setOverviewById(new Map());
+      });
+  }, [linkedProjectsModal]);
+
   const switchYear = (y) => {
     setActiveYear(y);
     setPage(1);
@@ -230,117 +244,6 @@ export default function Project() {
   };
 
   const openStartModal = (record = null) => setNewReq({ record });
-
-  const openEditModal = (project) => {
-    setEditingProject(project);
-    setEditForm({
-      location: project.location || "",
-      startDate: project.startDate ? project.startDate.slice(0, 10) : "",
-      endDate: project.endDate ? project.endDate.slice(0, 10) : "",
-      isOffshore: project.isOffshore ?? false,
-      // travelMode: project.travelMode || "",
-      ...splitTravel(project.travelMode),
-      // responseDeadline: project.responseDeadline
-      //   ? project.responseDeadline.slice(0, 10)
-      //   : "",
-      responseDays: String(project.responseDays ?? DEFAULT_RESPONSE_DAYS),
-      notes: project.notes || "",
-    });
-  };
-
-  const closeEditModal = () => {
-    setEditingProject(null);
-    setEditForm({
-      location: "",
-      startDate: "",
-      endDate: "",
-      isOffshore: false,
-      travelMode: "",
-      travelOther: "",
-      // responseDeadline: "",
-      responseDays: String(DEFAULT_RESPONSE_DAYS),
-      notes: "",
-    });
-  };
-
-  const handleEditSubmit = async () => {
-    if (!editingProject) return;
-    try {
-      setSavingEdit(true);
-      await axios.put(
-        `${backendUrl}/api/projects/${editingProject.id}`,
-        {
-          name: editingProject.name,
-          contractId: editingProject.contractId,
-          location: editForm.location || null,
-          startDate: editForm.startDate || null,
-          endDate: editForm.endDate || null,
-          isOffshore: editForm.isOffshore,
-          // travelMode: editForm.travelMode || null,
-          travelMode: joinTravel(editForm),
-          // responseDeadline: editForm.responseDeadline || null,
-          responseDays: Number(editForm.responseDays) || DEFAULT_RESPONSE_DAYS,
-          notes: editForm.notes || null,
-        },
-        { withCredentials: true },
-      );
-      closeEditModal();
-      // รีเฟรชทั้งตาราง master record และ linked list ที่เปิดอยู่ (ถ้ามี)
-      fetchRecords(activeYear, page, searchQuery);
-      if (linkedProjectsModal) {
-        const res = await axios.get(
-          `${backendUrl}/api/projects/master-records/browse`,
-          {
-            withCredentials: true,
-            params: {
-              year: activeYear,
-              page,
-              pageSize: PAGE_SIZE,
-              search: searchQuery,
-            },
-          },
-        );
-        const refreshed = res.data.records.find(
-          (r) => r.id === linkedProjectsModal.id,
-        );
-        if (refreshed) setLinkedProjectsModal(refreshed);
-      }
-    } catch (error) {
-      console.error(error);
-      alert(error.response?.data?.message || "แก้ไข Project ไม่สำเร็จ");
-    } finally {
-      setSavingEdit(false);
-    }
-  };
-
-  const handleDeleteProject = async (project) => {
-    if (
-      !window.confirm(
-        `ลบ Project "${project.name}" ทิ้งถาวร?\n\n⚠ การลบจะลบข้อมูลที่เกี่ยวข้องทั้งหมด (position request, shortlist, booking, assignment, mobilization checklist) ไปด้วย กู้คืนไม่ได้`,
-      )
-    )
-      return;
-    try {
-      setDeletingId(project.id);
-      await axios.delete(`${backendUrl}/api/projects/${project.id}`, {
-        withCredentials: true,
-      });
-      fetchRecords(activeYear, page, searchQuery);
-      if (linkedProjectsModal) {
-        setLinkedProjectsModal((prev) => ({
-          ...prev,
-          linkedProjects: prev.linkedProjects.filter(
-            (p) => p.id !== project.id,
-          ),
-        }));
-      }
-    } catch (error) {
-      console.error(error);
-      alert(error.response?.data?.message || "ลบ Project ไม่สำเร็จ");
-    } finally {
-      setDeletingId(null);
-    }
-  };
 
   const formatDetailValue = (key, value) => {
     if (value === null || value === undefined || value === "") return "—";
@@ -388,10 +291,10 @@ export default function Project() {
       {linkedCount === 1 && (
         <Link
           to={`/projects/${r.linkedProjects[0].id}`}
-          title="เปิดหน้าจัดการ requirement"
+          title="หน้ารายละเอียด requirement — แก้ตำแหน่ง / จำนวนคน / วันที่ / คุยกับ PE"
           className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3.5 py-1.5 no-underline`}
         >
-          Manage →
+          Requirement →
         </Link>
       )}
       {linkedCount > 1 && (
@@ -734,7 +637,7 @@ export default function Project() {
       {linkedProjectsModal && (
         <ModalShell
           onClose={() => setLinkedProjectsModal(null)}
-          maxW="max-w-[480px]"
+          maxW="max-w-[640px]"
         >
           <div className={MODAL_HEAD}>
             <span className="min-w-0 truncate text-base font-semibold">
@@ -751,13 +654,24 @@ export default function Project() {
           <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
             <div className="mb-3 break-words text-xs text-gray-500">
               {linkedProjectsModal.jobTitle}
+              <span className="text-gray-400">
+                {" "}· แก้ไข / ลบ requirement ที่ปุ่ม Requirement
+              </span>
             </div>
 
-            {linkedProjectsModal.linkedProjects.map((p) => {
+            {[...linkedProjectsModal.linkedProjects]
+              // เรียงตามแท็บของ Manpower Calendar (กำลังดำเนินการ → กำลังจะเริ่ม → จบแล้ว) แล้วตามวันเริ่ม
+              .sort((a, b) => {
+                const ta = PERIOD_ORDER[overviewById?.get(a.id)?.tab] ?? 9;
+                const tb = PERIOD_ORDER[overviewById?.get(b.id)?.tab] ?? 9;
+                return ta - tb || new Date(a.startDate || 0) - new Date(b.startDate || 0);
+              })
+              .map((p) => {
+              const ov = overviewById?.get(p.id);
               const startPart = fmtShort(p.startDate);
               const endPart = fmtShort(p.endDate);
-              const locationPart = p.location || null;
-              const isDeleting = deletingId === p.id;
+              const need = ov ? ov.requests.reduce((n, r) => n + (r.quantity || 0), 0) : null;
+              const [tagText, tagCls] = PERIOD_TAG[ov?.tab] || [];
 
               return (
                 <div
@@ -765,18 +679,33 @@ export default function Project() {
                   className="mb-1.5 flex flex-col gap-2 rounded-md bg-gray-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <div className="break-words text-[13px] font-semibold">
-                      {p.name}
+                    {/* ชื่อ requirement มักซ้ำกันใน ON เดียว — ช่วงวันที่คือตัวแยก ขึ้นก่อนชื่อ */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold">
+                      <span>
+                        {startPart || "ยังไม่กำหนดวัน"}
+                        {endPart ? ` – ${endPart}` : ""}
+                      </span>
+                      {tagText && (
+                        <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-semibold ${tagCls}`}>
+                          {tagText}
+                        </span>
+                      )}
                     </div>
-                    {(locationPart || startPart) && (
-                      <div className="mt-0.5 flex flex-wrap gap-1.5 text-[11px] text-gray-700">
-                        {locationPart && <span>📍 {locationPart}</span>}
-                        {startPart && (
-                          <span>
-                            🗓 {startPart}
-                            {endPart ? ` – ${endPart}` : ""}
-                          </span>
-                        )}
+                    <div className="mt-0.5 break-words text-[11px] text-gray-700">
+                      {p.name}
+                      {p.location ? ` · 📍 ${p.location}` : ""}
+                    </div>
+                    {ov && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-600">
+                        <span>{ov.requests.length} ตำแหน่ง</span>
+                        <span>
+                          ลงงาน{" "}
+                          <b className={ov.employees.length >= need && need > 0 ? "text-emerald-700" : "text-gray-800"}>
+                            {ov.employees.length}
+                          </b>
+                          /{need} คน
+                        </span>
+                        <StageBadge stage={ov.currentStage} />
                       </div>
                     )}
                     <div className="mt-0.5 text-[10px] text-gray-400">
@@ -785,30 +714,19 @@ export default function Project() {
                   </div>
 
                   <div className="flex shrink-0 gap-1.5 self-end sm:self-auto">
-                    {canManageProjects && (
-                      <>
-                        <button
-                          onClick={() => openEditModal(p)}
-                          title="แก้ไข"
-                          className={`${BTN} ${LIFT_WHITE} px-2 py-1.5`}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProject(p)}
-                          disabled={isDeleting}
-                          title="ลบ"
-                          className={`${BTN} ${LIFT_WHITE} px-2 py-1.5 text-red-600 disabled:hover:translate-y-0`}
-                        >
-                          {isDeleting ? "..." : "🗑"}
-                        </button>
-                      </>
-                    )}
+                    <Link
+                      to={`/projects-overview/${p.id}`}
+                      title="ดู timeline ขั้นตอน + ตารางวันทำงานรายคน (Manpower Calendar)"
+                      className={BTN_TIMELINE}
+                    >
+                      Timeline
+                    </Link>
                     <Link
                       to={`/projects/${p.id}`}
-                      className={`${BTN} ${LIFT_BLUE} px-3 py-1.5 no-underline`}
+                      title="หน้ารายละเอียด requirement — แก้ตำแหน่ง / จำนวนคน / วันที่ / คุยกับ PE"
+                      className={BTN_REQUIREMENT}
                     >
-                      Manage →
+                      Requirement →
                     </Link>
                   </div>
                 </div>
@@ -851,161 +769,6 @@ export default function Project() {
         />
       )}
 
-      {/* ════════ Edit Project Modal ════════ */}
-      {editingProject && canManageProjects && (
-        <ModalShell
-          onClose={closeEditModal}
-          zClass="z-[1000002]"
-          maxW="max-w-[560px]"
-        >
-          <div className={MODAL_HEAD}>
-            <div className="min-w-0">
-              <div className="text-base font-semibold">✏️ Edit Project</div>
-              <div className="mt-0.5 break-words text-xs opacity-80">
-                {editingProject.name}
-              </div>
-            </div>
-            <button onClick={closeEditModal} className={CLOSE_X}>
-              ✕
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className={LABEL}>Location / Site</label>
-                <input
-                  type="text"
-                  value={editForm.location}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      location: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Onshore / Offshore</label>
-                <select
-                  value={editForm.isOffshore ? "offshore" : "onshore"}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      isOffshore: e.target.value === "offshore",
-                    }))
-                  }
-                  className={INPUT}
-                >
-                  <option value="onshore">Onshore</option>
-                  <option value="offshore">Offshore (นอกชายฝั่ง)</option>
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>Start Date</label>
-                <input
-                  type="date"
-                  value={editForm.startDate}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      startDate: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>End Date</label>
-                <input
-                  type="date"
-                  value={editForm.endDate}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      endDate: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* <div>
-                <label className={LABEL}>ขาไป (วิธีเดินทาง)</label>
-                <select
-                  value={editForm.travelMode}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      travelMode: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                >
-                  <option value="">— ไม่ระบุ —</option>
-                  {TRAVEL_MODE_OPTIONS.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div> */}
-              <TravelModeField form={editForm} setForm={setEditForm} />
-              <div>
-                <label className={LABEL}>พนักงานต้องตอบรับภายใน (วัน)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={90}
-                  value={editForm.responseDays}
-                  onChange={(e) =>
-                    setEditForm((prev) => ({
-                      ...prev,
-                      responseDays: e.target.value,
-                    }))
-                  }
-                  className={INPUT}
-                />
-                <div className="mt-1 text-[11px] text-gray-400">
-                  นับจากวันที่ approve ที่หน้า Allocation — แสดงให้พนักงานเห็นใน
-                  Worker App
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className={LABEL}>Notes</label>
-              <textarea
-                rows={3}
-                value={editForm.notes}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, notes: e.target.value }))
-                }
-                className={`${INPUT} resize-y`}
-              />
-            </div>
-          </div>
-
-          <div className={MODAL_FOOT}>
-            <button onClick={closeEditModal} className={BTN_CANCEL}>
-              Cancel
-            </button>
-            <button
-              onClick={handleEditSubmit}
-              disabled={savingEdit}
-              className={`rounded-lg border-none px-5 py-2 text-[13px] font-semibold text-white ${
-                savingEdit
-                  ? "cursor-not-allowed bg-gray-400"
-                  : "cursor-pointer bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              {savingEdit ? "กำลังบันทึก..." : "บันทึก"}
-            </button>
-          </div>
-        </ModalShell>
-      )}
     </div>
   );
 }
