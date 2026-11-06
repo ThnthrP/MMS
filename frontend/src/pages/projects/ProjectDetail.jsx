@@ -140,7 +140,7 @@ export default function ProjectDetail() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // ลบ project ได้เฉพาะ admin ที่เป็นผู้สร้าง — backend ตัดสิน (GET /api/projects/deletable) และเช็คซ้ำตอนลบ
+  // ลบ project ได้เฉพาะ admin (ทุก project) — backend ตัดสิน (GET /api/projects/deletable) และเช็คซ้ำตอนลบ
   const [canDelete, setCanDelete] = useState(false);
 
   const openEdit = () => {
@@ -575,7 +575,7 @@ export default function ProjectDetail() {
                 <button
                   onClick={handleDelete}
                   disabled={deleting}
-                  title="ลบ project นี้ (เฉพาะ project ที่คุณสร้าง)"
+                  title="ลบ project นี้ (เฉพาะ admin)"
                   className="flex-1 cursor-pointer rounded-lg border border-red-200 bg-white px-3.5 py-[7px] text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed sm:flex-none"
                 >
                   {deleting ? "กำลังลบ..." : "🗑 Delete"}

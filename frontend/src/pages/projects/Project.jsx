@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useLayoutEffect, useContext, useRef } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { Link, useNavigate } from "react-router-dom";
@@ -39,7 +39,7 @@ const TABLE_HEADERS = [
   ["COMPANY", ""],
   ["TEAM", ""],
   ["STATUS", ""],
-  ["ACTIONS", "w-[170px]"],
+  ["ACTIONS", "w-[150px]"],
 ];
 
 // ── Tailwind class ที่ใช้ซ้ำ (แทน inputStyle / labelStyle / btnBase เดิม) ──
@@ -157,6 +157,12 @@ export default function Project() {
   // null = ปิด / { record } = เปิด (record = ON Number ที่เลือกไว้ให้ ถ้ามี)
   const [newReq, setNewReq] = useState(null);
 
+  // ตารางเลื่อนในกรอบตัวเอง — สูงเท่าพื้นที่ที่เหลือของจอ (วัดจริง) หักแถบเลขหน้า
+  //   (เดิม h-[calc(100vh-90px)] ไม่ได้นับแท็บ Projects / Positions ด้านบน แถบเลขหน้าเลยตกขอบล่าง)
+  const tableBoxRef = useRef(null);
+  const pagerRef = useRef(null);
+  const [tableMaxH, setTableMaxH] = useState(null);
+
   const fetchYears = async () => {
     try {
       const res = await axios.get(
@@ -227,6 +233,19 @@ export default function Project() {
       });
   }, [linkedProjectsModal]);
 
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = tableBoxRef.current;
+      if (!el || el.offsetParent === null) return; // ซ่อนอยู่ (จอเล็กกว่า lg ใช้การ์ด)
+      const top = el.getBoundingClientRect().top;
+      const reserve = (pagerRef.current?.offsetHeight || 0) + 20;
+      setTableMaxH(Math.max(280, Math.floor(window.innerHeight - top - reserve)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [loading, data.totalPages, searchQuery, years.length]);
+
   const switchYear = (y) => {
     setActiveYear(y);
     setPage(1);
@@ -283,7 +302,7 @@ export default function Project() {
       <button
         title="ดูรายละเอียดทั้งหมด"
         onClick={() => setViewingRecord(r)}
-        className={`${BTN} ${LIFT_WHITE} min-w-[72px] px-3.5 py-1.5 text-gray-700`}
+        className={`${BTN} ${LIFT_WHITE} min-w-[72px] px-3 py-1.5 text-gray-700`}
       >
         👁 View
       </button>
@@ -292,7 +311,7 @@ export default function Project() {
         <Link
           to={`/projects/${r.linkedProjects[0].id}`}
           title="หน้ารายละเอียด requirement — แก้ตำแหน่ง / จำนวนคน / วันที่ / คุยกับ PE"
-          className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3.5 py-1.5 no-underline`}
+          className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3 py-1.5 no-underline`}
         >
           Requirement →
         </Link>
@@ -300,7 +319,7 @@ export default function Project() {
       {linkedCount > 1 && (
         <button
           onClick={() => setLinkedProjectsModal(r)}
-          className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3.5 py-1.5`}
+          className={`${BTN} ${LIFT_BLUE} min-w-[72px] px-3 py-1.5`}
         >
           📂 รายการ ({linkedCount})
         </button>
@@ -315,10 +334,10 @@ export default function Project() {
   );
 
   return (
-    // lg ขึ้นไป: สูงเต็มจอ ตาราง scroll ภายในการ์ด
+    // lg ขึ้นไป: ตาราง scroll ภายในการ์ด สูงตามพื้นที่ที่เหลือของจอ (วัดจริง) — แถบเลขหน้าอยู่ในจอเสมอ
     // ต่ำกว่า lg: สูงตามเนื้อหา ทั้งหน้า scroll ปกติ
-    <div className="flex flex-col lg:h-[calc(100vh-90px)]">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1800px] flex-1 flex-col">
+    <div className="flex flex-col">
+      <div className="mx-auto flex w-full max-w-[1800px] flex-col">
         {/* Header */}
         <div className="pb-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -442,8 +461,12 @@ export default function Project() {
         </div>
 
         {/* ── จอใหญ่ (lg+): ตาราง ── */}
-        <div className="hidden min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-gray-200 bg-white lg:flex">
-          <div className="min-h-0 flex-1 overflow-auto">
+        <div className="hidden flex-col overflow-hidden rounded-[10px] border border-gray-200 bg-white lg:flex">
+          <div
+            ref={tableBoxRef}
+            style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
+            className="max-h-[calc(100vh-380px)] overflow-auto"
+          >
             <table className="w-full min-w-[820px] border-collapse text-[13px]">
               <thead>
                 <tr>
@@ -495,7 +518,8 @@ export default function Project() {
                           <StatusBadge linkedCount={linkedCount} />
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <div className="flex justify-center gap-1.5">
+                          {/* ซ้อนแนวตั้ง (แบบหน้า Manpower Requirements) — คอลัมน์แคบ ปุ่มกว้างเท่ากัน */}
+                          <div className="mx-auto flex w-[118px] flex-col items-stretch gap-1">
                             {renderRecordActions(r, linkedCount)}
                           </div>
                         </td>
@@ -510,7 +534,10 @@ export default function Project() {
 
         {/* Pagination */}
         {data.totalPages > 1 && (
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 px-1 py-3 text-xs text-gray-500 sm:px-4">
+          <div
+            ref={pagerRef}
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 px-1 py-3 text-xs text-gray-500 sm:px-4"
+          >
             <span>
               หน้า {data.page} / {data.totalPages} — ทั้งหมด {data.total} รายการ
             </span>

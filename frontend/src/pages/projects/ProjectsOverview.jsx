@@ -46,9 +46,9 @@ const ICON_BTN =
 //   Timeline    = หน้านี้ฉบับละเอียด (ProjectCalendarDetail) — ขั้นตอน + ตารางวันทำงานรายคน
 //   Requirement = หน้า ProjectDetail — แก้ตำแหน่ง / จำนวนคน / วันที่ / คุยกับ PE / ลบ
 const BTN_TIMELINE =
-  "inline-block whitespace-nowrap rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700";
+  "inline-block whitespace-nowrap text-center rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 no-underline hover:border-blue-600 hover:bg-blue-50 hover:text-blue-700";
 const BTN_REQUIREMENT =
-  "inline-block whitespace-nowrap rounded-md border border-[#b6d4fe] bg-[#e7f1ff] px-2.5 py-1 text-xs font-semibold text-blue-700 no-underline hover:bg-blue-600 hover:text-white";
+  "inline-block whitespace-nowrap text-center rounded-md border border-[#b6d4fe] bg-[#e7f1ff] px-2.5 py-1 text-xs font-semibold text-blue-700 no-underline hover:bg-blue-600 hover:text-white";
 const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 
 const toYMD = (d) => {
@@ -90,7 +90,7 @@ export default function ProjectsOverview() {
   const tableBoxRef = useRef(null);
   const [tableMaxH, setTableMaxH] = useState(null);
 
-  // project ที่ผู้ใช้คนนี้ลบได้ (admin + เป็นผู้สร้าง) — backend ตัดสิน และเช็คซ้ำตอนลบ
+  // project ที่ผู้ใช้คนนี้ลบได้ (admin = ทุก project) — backend ตัดสิน และเช็คซ้ำตอนลบ
   const [deletableIds, setDeletableIds] = useState(() => new Set());
   const [deletingId, setDeletingId] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -170,7 +170,7 @@ export default function ProjectsOverview() {
           deleteProject(p);
         }}
         disabled={deletingId === p.id}
-        title="ลบ project นี้ (เฉพาะ project ที่คุณสร้าง)"
+        title="ลบ project นี้ (เฉพาะ admin)"
         aria-label="ลบ"
         className={ICON_DELETE}
       >
@@ -456,8 +456,9 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
-                    {/* กว้างพอดีปุ่ม: Timeline + Requirement (+ 🗑 ถ้ามี project ที่ลบได้อย่างน้อย 1 แถว) */}
-                    <th className={`${TH} text-left ${hasDeletable ? "w-[240px]" : "w-[206px]"}`}>
+                    {/* ปุ่ม Timeline / Requirement ซ้อนแนวตั้ง (แบบหน้า Manpower Requirements) — คอลัมน์แคบ
+                        คอลัมน์ข้อมูลได้พื้นที่คืน · +🗑 ด้านขวา ถ้ามี project ที่ลบได้อย่างน้อย 1 แถว */}
+                    <th className={`${TH} text-left ${hasDeletable ? "w-[152px]" : "w-[124px]"}`}>
                       ACTIONS
                     </th>
                   </tr>
@@ -511,9 +512,11 @@ export default function ProjectsOverview() {
                         {/* ชิดซ้าย — Timeline / Requirement ตรงกันทุกแถว ไม่ว่าแถวนั้นจะมีปุ่มลบหรือไม่ */}
                         <td className={`${TD} whitespace-nowrap text-left`}>
                           <div className="inline-flex items-center gap-1.5">
-                            {timelineBtn(p)}
-                            {/* 🗑 ลบทั้ง project = เฉพาะ admin ที่เป็นผู้สร้าง */}
-                            {requirementBtn(p)}
+                            <div className="flex w-[96px] flex-col items-stretch gap-1">
+                              {timelineBtn(p)}
+                              {requirementBtn(p)}
+                            </div>
+                            {/* 🗑 ลบทั้ง project = เฉพาะ admin */}
                             {deleteBtn(p)}
                           </div>
                         </td>

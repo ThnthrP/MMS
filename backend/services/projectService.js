@@ -209,14 +209,13 @@ async function isAdmin(userId) {
   return u?.role?.name === "admin";
 }
 
-// project ที่ user คนนี้ลบได้ = เป็น admin และเป็นคนสร้าง project นั้นเอง
+// project ที่ user คนนี้ลบได้ = admin (role หลัก) ลบได้ทุก project · role อื่นลบไม่ได้
+//   (เดิมจำกัดเฉพาะ project ที่ admin คนนั้นสร้างเอง — ยกเลิกแล้ว)
+//   ผู้สร้างยังดูได้จาก getProjectCreators / Audit Log และการลบทุกครั้งถูกบันทึกใน Audit Log
 export async function getDeletableProjectIds(userId) {
   if (!(await isAdmin(userId))) return [];
   const projects = await prisma.project.findMany({ select: { id: true } });
-  const creators = await getProjectCreators(projects.map((p) => p.id));
-  return projects
-    .map((p) => p.id)
-    .filter((id) => creators.get(id) === String(userId));
+  return projects.map((p) => p.id);
 }
 
 export async function assertCanDeleteProject(projectId, userId) {
@@ -235,17 +234,7 @@ export async function assertCanDeleteProject(projectId, userId) {
     throw e;
   }
   if (!(await isAdmin(userId))) {
-    const e = new Error("ลบ project ได้เฉพาะ admin ที่เป็นผู้สร้าง project นั้น");
-    e.code = "FORBIDDEN";
-    throw e;
-  }
-  const creators = await getProjectCreators([project.id]);
-  if (creators.get(project.id) !== String(userId)) {
-    const e = new Error(
-      creators.has(project.id)
-        ? "ลบไม่ได้ — project นี้ไม่ได้สร้างโดยคุณ"
-        : "ลบไม่ได้ — ไม่พบประวัติผู้สร้าง project นี้ใน Audit Log",
-    );
+    const e = new Error("ลบ project ได้เฉพาะ admin");
     e.code = "FORBIDDEN";
     throw e;
   }
