@@ -627,7 +627,9 @@ export default function BulkAddCertification() {
                       <th className={TH}>EMPLOYEE</th>
                       <th className={`${TH} ${HIDE_MOBILE}`}>POSITION</th>
                       <th className={`${TH} ${HIDE_MOBILE}`}>DEPARTMENT</th>
-                      <th className={`${TH} ${HIDE_MOBILE}`}>CERT นี้</th>
+                      <th className={`${TH} ${HIDE_MOBILE} w-[110px] whitespace-nowrap`}>
+                        CERT นี้
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
