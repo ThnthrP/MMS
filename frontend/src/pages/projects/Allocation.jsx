@@ -63,10 +63,12 @@ const TD = "px-3 py-3 align-middle";
 // ตรึง checkbox + NAME ไว้ซ้ายเวลาเลื่อนตารางแนวนอน
 // bg-inherit = ใช้สีพื้นของแถว (รวมสีตอน hover / ตอนเลือก) กันข้อความคอลัมน์อื่นลอดข้างใต้
 // เส้นแบ่งใช้ ::after เพราะ border ของตารางแบบ border-collapse ไม่เลื่อนตาม sticky
-const STICKY_CHECK = "sticky left-0 z-[2] bg-inherit";
+// คอลัมน์ checkbox กว้าง 72px (มีคำว่า "เลือกทั้งหมด" อยู่เหนือ checkbox ที่หัวตาราง)
+//   NAME จึงตรึงที่ left-[72px] — แก้ความกว้างต้องแก้ทั้ง 3 จุด (col / STICKY_NAME / หัว NAME)
+const STICKY_CHECK = "sticky left-0 z-[2] bg-inherit text-center";
 const NAME_DIVIDER =
   "after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-gray-200 after:content-['']";
-const STICKY_NAME = `sticky left-9 z-[2] bg-inherit ${NAME_DIVIDER}`;
+const STICKY_NAME = `sticky left-[72px] z-[2] bg-inherit ${NAME_DIVIDER}`;
 const MODAL_HEAD =
   "flex shrink-0 items-center justify-between gap-3 px-4 py-3.5 text-white sm:px-6";
 const MODAL_FOOT =
@@ -353,7 +355,7 @@ function WorkerTable({
     <div className={`${maxH} overflow-auto`}>
       <table className="w-full min-w-[840px] table-fixed border-collapse text-[13px]">
         <colgroup>
-          <col className="w-9" />
+          <col className="w-[72px]" />
           {COLUMNS.map(([h, , w]) => (
             <col key={h} className={w} />
           ))}
@@ -361,12 +363,14 @@ function WorkerTable({
         </colgroup>
         <thead>
           <tr>
-            <th className={`${TH} left-0 z-[3]`}>{leadHeader}</th>
+            <th className={`${TH.replace("px-3 ", "px-1 ")} left-0 z-[3] text-center`}>
+              {leadHeader}
+            </th>
             {COLUMNS.map(([h, align]) => (
               <th
                 key={h}
                 className={`${TH} ${align} ${
-                  h === "NAME" ? `left-9 z-[3] ${NAME_DIVIDER}` : "z-[1]"
+                  h === "NAME" ? `left-[72px] z-[3] ${NAME_DIVIDER}` : "z-[1]"
                 }`}
               >
                 {h}
@@ -2543,16 +2547,26 @@ export default function Allocation() {
                           withAction={canManageAllocation}
                           leadHeader={
                             canManageAllocation && (
-                              <input
-                                type="checkbox"
-                                checked={allDisplayedSelected}
-                                onChange={toggleAll}
-                                disabled={
-                                  selectableDisplayedWorkers.length === 0
-                                }
+                              // คำกำกับอยู่เหนือ checkbox — คอลัมน์แคบ ไม่เบียดคอลัมน์ NAME
+                              <label
                                 title="เลือกทั้งหมด (เฉพาะคนที่ % Match = 100% หรือ PE อนุมัติแล้ว)"
-                                className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
-                              />
+                                className={`flex flex-col items-center gap-1 whitespace-nowrap text-[10px] font-semibold leading-none tracking-normal ${
+                                  selectableDisplayedWorkers.length === 0
+                                    ? "cursor-not-allowed opacity-50"
+                                    : "cursor-pointer"
+                                }`}
+                              >
+                                เลือกทั้งหมด
+                                <input
+                                  type="checkbox"
+                                  checked={allDisplayedSelected}
+                                  onChange={toggleAll}
+                                  disabled={
+                                    selectableDisplayedWorkers.length === 0
+                                  }
+                                  className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
+                                />
+                              </label>
                             )
                           }
                         >

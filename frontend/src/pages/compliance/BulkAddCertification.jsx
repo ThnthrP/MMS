@@ -654,7 +654,7 @@ export default function BulkAddCertification() {
                                 : "bg-white hover:bg-gray-50"
                             }`}
                           >
-                            <td className="px-3.5 py-2.5">
+                            <td className="px-3.5 py-2.5 text-center">
                               <input
                                 type="checkbox"
                                 checked={checked}

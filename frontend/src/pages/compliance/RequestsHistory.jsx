@@ -770,7 +770,7 @@ function BookingsPage({ requestType }) {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className={`${TH} w-[130px] normal-case tracking-normal`}>
+                <th className={`${TH} w-[170px] normal-case tracking-normal`}>
                   <label
                     className={`flex items-center gap-1.5 ${
                       pendingInView.length > 0 ? "cursor-pointer" : "cursor-not-allowed opacity-50"
@@ -784,7 +784,7 @@ function BookingsPage({ requestType }) {
                       disabled={pendingInView.length === 0}
                       className="h-[15px] w-[15px] cursor-pointer"
                     />
-                    ทั้งหมดที่รอ ({pendingInView.length})
+                    เลือกทั้งหมดที่รอ ({pendingInView.length})
                   </label>
                 </th>
                 <th className={TH}>Worker</th>
