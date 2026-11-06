@@ -56,6 +56,22 @@ GlobalTraining        one canonical course (e.g. "BOSIET"), shared by all client
 - Adding a client means adding its `Client` / `Contract`, linking its course
   names to the catalog, and entering its position matrix. No code change is
   needed
+- Which client is linked to which course is stored as `ClientTraining` rows
+  (one per course × client contract). The Trainings page shows one ✓ column
+  per client, with the number of matrix positions that use the course
+
+### Single-client and multi-client mode
+
+The same code base runs as two deployments, configured only through `.env`:
+
+| Deployment | Setting | What users see |
+|------------|---------|----------------|
+| MMS-Chevron (current) | `VITE_CLIENT_MODE=single`, `VITE_PRIMARY_CLIENT_NAME=Chevron` (defaults) | Chevron columns, filters, and links only |
+| MMS Multi-client (planned) | `VITE_CLIENT_MODE=multi` | A column, filter option, and link checkbox for every client |
+
+The setting lives in `frontend/src/config/clientMode.js`. It only changes
+what the UI shows; restricting users to their own clients
+(`UserClientAccess`) must be enforced in the API.
 
 ---
 
@@ -117,13 +133,32 @@ reviewers, and a history panel of who did what and when.
 ![Requirement Detail](screenshots/manpower-calendar-detail.png)
 
 #### 🎓 Training Bookings
-Training requests for workers with missing, expired, or expiring records.
+Training requests for workers with missing, expired, or expiring records, one
+row per worker. HR confirms or rejects each row, or many at once
+("เลือกทั้งหมดที่รอ"), and opens **✓ บันทึกผลอบรม** to record results.
 ![Training Bookings](screenshots/training-bookings.png)
+
+#### 📘 Training Courses
+Pick one course to see who has it, who is expiring, and who is missing it.
+Filter by name / ID, department, position, and certificate status, tick
+workers, then send a training request to HR. Selected workers stay listed in
+the side panel while searching.
+![Training Courses](screenshots/training-courses.png)
+
+#### ✅ Bulk Add Certification
+Record one training round for a whole group: course, shared issued / expiry
+dates, an optional certificate file, then pick the workers (search, department,
+position, hide workers who already hold the certificate). A side panel lists
+everyone selected, and a progress bar shows the save.
+![Bulk Add Certification](screenshots/bulk-add-certification.png)
 
 #### 🩺 Medical Bookings
 ![Medical Bookings](screenshots/medical-bookings.png)
 
 #### 🚀 Mobilization
+Position chips show each position's assigned / deployed count (click to
+filter). A fill-all row sets From / Platform / MOB / D-MOB for every
+undeployed worker in view, next to the training-topics button.
 ![Mobilization](screenshots/mobilization.png)
 
 #### ⭐ Post-Project Review
@@ -152,7 +187,8 @@ Position-to-training requirements per contract (Mandatory / Assigned).
 #### 📚 Trainings (shared course catalog)
 One canonical name per course with the names HR uses in its files. "View list"
 groups each course's certificates by the name in the source file, and
-certificates filed under the wrong course can be moved.
+certificates filed under the wrong course can be moved. In multi-client mode
+the table shows a column per client.
 ![Trainings](screenshots/trainings.png)
 
 ### Admin
@@ -270,13 +306,20 @@ shown at the top of the page.
   - *History:* entries from the Audit Log in plain language with the
     employee's name, filtered by team / documents / status & approvals
 - **Training Bookings / Medical Bookings:** training and medical check-up
-  requests for workers with missing, expired, or expiring records, tracked
-  as pending / completed; Training Courses shows one training across every
-  worker, including bulk certificate entry
+  requests for workers with missing, expired, or expiring records, one row per
+  worker; HR confirms / rejects per row or in bulk, with filters and CSV export
+  - *Training Courses:* one course across every worker with status counts;
+    tick workers and send a training request to HR (view and request only)
+  - *Bulk Add Certification:* record a finished training round for a group
+    (shared dates and certificate file). Opened from **✓ บันทึกผลอบรม** on
+    Training Bookings, or from a confirmed request with the workers
+    pre-selected
 - **Worker Schedule:**
   - *Mobilization:* pre-mobilization checklist (alcohol test, drug test, PPE
     inspection, pre-field training, baggage inspection, blood pressure), then
-    deploy to site with D-MOB calculated from the MOB date
+    deploy to site with D-MOB calculated from the MOB date; position chips
+    filter the list, and a fill-all row sets From / Platform / MOB / D-MOB
+    for every undeployed worker in view
   - *Post-Project Review:* per-worker rating and rehire recommendation, with
     review progress, reviewer name and date, row filter, and Save all
 - **Worker Pool:** worker profiles (Employee ID / internal code, position,
@@ -394,7 +437,9 @@ MMS/
 │   │   │   ├── layout/            # Layout, Navbar, Sidebar, MenuTabs, sidebarMenu.js
 │   │   │   ├── worker-layout/     # Worker App layout
 │   │   │   ├── print/             # CV / Roster / Skill Matrix print components
+│   │   │   ├── SelectedPeoplePanel.jsx  # "selected workers" side panel (Bulk Add, Training Courses)
 │   │   │   └── ProtectedRoute.jsx
+│   │   ├── config/                # clientMode.js (single / multi-client mode)
 │   │   ├── context/               # AppContext, WorkerAppContext
 │   │   ├── hooks/                 # useStickyState
 │   │   ├── pages/
@@ -446,6 +491,11 @@ MMS/
   page omits its own `h1`
 - Use named Tailwind breakpoints (`sm` / `md` / `lg` / `xl` / `2xl`);
   arbitrary `min-[...]` breakpoints are ordered before them and get overridden
+- Selection tables: row checkboxes are centered, and the header checkbox is
+  labeled "เลือกทั้งหมด"; when many workers can be picked, show them in
+  `SelectedPeoplePanel` so selections stay visible while filtering
+- Button colors: navy solid = main action, green outline = record results
+  (same tone as Confirm), gray = utilities such as Export CSV
 
 ---
 
@@ -555,4 +605,9 @@ PTA_SERVICE_TOKEN=
 
 ```env
 VITE_BACKEND_URL=http://localhost:4100
+
+# Client mode (unset = single + Chevron). Vite reads these at build time,
+# so restart the dev server or rebuild after changing them.
+# VITE_CLIENT_MODE=multi
+# VITE_PRIMARY_CLIENT_NAME=Chevron
 ```
