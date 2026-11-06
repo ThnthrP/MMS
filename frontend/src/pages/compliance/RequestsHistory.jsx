@@ -521,9 +521,10 @@ function BookingsPage({ requestType }) {
             ⬇ Export CSV
           </button>
           {isTraining && (
+            // สีเขียว = บันทึกผล (โทนเดียวกับปุ่ม Confirm) · Export CSV คงสีเทา เพราะเป็นเครื่องมือเสริม
             <Link
               to="/certifications/bulk-add"
-              className={TOOL_BTN}
+              className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-[#198754] bg-[#f0faf4] px-3 py-1.5 text-xs font-semibold text-[#0f5132] no-underline hover:bg-[#d1e7dd]"
               title="อบรมเสร็จแล้ว → บันทึก certification ให้ทั้งกลุ่มทีเดียว"
             >
               ✓ บันทึกผลอบรม (Bulk Add Certification)
