@@ -104,6 +104,7 @@ new requirement from an ON Number.
 #### 📋 Manpower Requirements
 Every open position request across projects, with progress, filters, and
 search by position, project, location, or worker name (Thai / English).
+"Requested by" shows the user who added each position.
 ![Manpower Requirements](screenshots/manpower-requirements.png)
 
 #### 👥 Assign Names
@@ -122,7 +123,10 @@ Workers below 100% match, grouped by project and position, approved or rejected 
 ![PE Approvals](screenshots/pe-approvals.png)
 
 #### 📅 Manpower Calendar
-Projects with staffing progress and each worker's timeline, used to check availability.
+Projects with staffing progress and each worker's timeline, used to check
+availability. The list scrolls under a fixed header; each row has View, ✏️
+(edit on the Requirement page), and 🗑 for projects the signed-in admin
+created.
 ![Manpower Calendar](screenshots/manpower-calendar.png)
 
 #### 🧭 Manpower Calendar › Requirement Detail
@@ -153,6 +157,7 @@ everyone selected, and a progress bar shows the save.
 ![Bulk Add Certification](screenshots/bulk-add-certification.png)
 
 #### 🩺 Medical Bookings
+Same layout as Training Bookings, for medical check-up requests.
 ![Medical Bookings](screenshots/medical-bookings.png)
 
 #### 🚀 Mobilization
@@ -172,7 +177,8 @@ Worker list with search and filters by department, position, status, availabilit
 ![Worker Detail](screenshots/worker-detail.png)
 
 #### 💬 Project Detail & Discussion
-Position requests, employee timeline, and PE ↔ Manpower discussion with attachments.
+ON Number, position requests, employee timeline, and PE ↔ Manpower discussion
+with attachments.
 ![Project Detail](screenshots/project-detail.png)
 
 #### 📄 CV Summary Export
@@ -282,7 +288,8 @@ shown at the top of the page.
 - **Manpower Requirements:** all position requests across projects with
   filled / required progress, filters (project, status, location, date), and
   search by position, project, location, or assigned worker name (Thai /
-  English); new requirements can be created from this page
+  English); new requirements can be created from this page. "Requested by"
+  is the signed-in user who added the position
 - **Assign Names:** match workers against client requirements (% match),
   shortlist (Proposed → Approved) from an assigned-list dropdown with
   colored status counts, and export CV Summary / Roster
@@ -292,7 +299,9 @@ shown at the top of the page.
   project and position
 - **Manpower Calendar:** in-progress / upcoming / completed requirements with
   the current step and progress dots, used to check availability before
-  assigning names. The detail page shows:
+  assigning names. Rows link to the detail page (View), the Requirement page
+  (✏️ edit), and, for the creator, project deletion (🗑, see
+  [Deleting a project](#deleting-a-project)). The detail page shows:
   - *Timeline (10 steps, following the ISO work procedure):* Requirement →
     Assign Names → Approval → Worker Confirm → Training & Medical → Pre-Field
     Training → Check In → MOB → D-MOB → Review. Each step is computed from data in the
@@ -328,6 +337,21 @@ shown at the top of the page.
   deployment history and document export
 - **Project Discussion:** PE ↔ Manpower message thread with file attachments
   on each project
+
+#### Deleting a project
+
+- Only a user whose **primary role is `admin`** can delete a project, and only
+  one **they created**. The creator is read from the Audit Log (the
+  `POST /api/projects` entry, or the first position added), because `Project`
+  has no creator column; projects created before the Audit Log existed cannot
+  be deleted from the UI
+- `GET /api/projects/deletable` returns the IDs the signed-in user may delete;
+  the 🗑 buttons on Manpower Calendar and Project Detail use it, and
+  `DELETE /api/projects/:id` checks the same rule again (403 otherwise)
+- The user must type the ON Number to confirm. Deletion removes positions,
+  shortlists, PE requests, bookings, checklists, assignments, reviews, and
+  messages in one transaction, and is recorded in the Audit Log with the ON
+  Number and counts. The ON Number itself stays in the Master Project Register
 
 ### Settings
 - **Training Matrix:** position-to-training requirements per contract
@@ -383,7 +407,7 @@ shown at the top of the page.
 
 | Role | Description |
 |------|-------------|
-| `admin` | Full system access, Users & Roles, Audit Log, Data Import (primary role only) |
+| `admin` | Full system access, Users & Roles, Audit Log, Data Import (primary role only); can delete projects they created |
 | `manpower_supply` | All operations and settings menus |
 | `hr_supervisor` | All operations and settings menus |
 | `personal_record_officer` | All operations and settings menus |
@@ -472,7 +496,8 @@ MMS/
 │   │   ├── schema.prisma
 │   │   ├── migrations/
 │   │   └── seeds/
-│   ├── scripts/                   # data import / setup scripts
+│   ├── scripts/                   # data import / setup scripts; backfillRequestedBy.js
+│   │                              #   (one-off: fill "Requested by" from the Audit Log; dry run unless --apply)
 │   ├── uploads/                   # worker photos, certificates, attachments
 │   └── server.js
 │
@@ -496,6 +521,11 @@ MMS/
   `SelectedPeoplePanel` so selections stay visible while filtering
 - Button colors: navy solid = main action, green outline = record results
   (same tone as Confirm), gray = utilities such as Export CSV
+- Row actions in dense tables: a text button for the main action (View), icon
+  buttons for edit ✏️ / delete 🗑 with the label in `title`; size the column to
+  the buttons it shows
+- Tables scroll inside their own box (sticky header) with the height measured
+  from the space left on screen, so the pager stays visible
 
 ---
 
