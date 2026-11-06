@@ -39,6 +39,8 @@ export async function getProjectById(id) {
       contract: {
         include: { client: true },
       },
+      // ON Number — หน้า Requirement แสดงที่หัวหน้า และใช้ยืนยันตอนลบ
+      masterProjectRecord: { select: { projectCode: true } },
       requests: {
         include: {
           position: true,

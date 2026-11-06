@@ -428,7 +428,7 @@ export default function ProjectsOverview() {
                     <th className={`${TH} text-center`}>คน (ลงงาน/ต้องการ)</th>
                     <th className={TH}>ขั้นตอนปัจจุบัน</th>
                     <th className={TH}>ความคืบหน้า</th>
-                    <th className={`${TH} w-[240px] text-center`}>ACTIONS</th>
+                    <th className={`${TH} w-[240px] text-left`}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -477,7 +477,8 @@ export default function ProjectsOverview() {
                         <td className={TD}>
                           <StageDots stages={p.stages} />
                         </td>
-                        <td className={`${TD} whitespace-nowrap text-center`}>
+                        {/* ชิดซ้าย — View / แก้ไข ตรงกันทุกแถว ไม่ว่าแถวนั้นจะมีปุ่มลบหรือไม่ */}
+                        <td className={`${TD} whitespace-nowrap text-left`}>
                           <div className="inline-flex items-center gap-1.5">
                             <Link
                               to={`/projects-overview/${p.id}`}

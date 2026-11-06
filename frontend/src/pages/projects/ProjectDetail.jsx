@@ -131,6 +131,8 @@ export default function ProjectDetail() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // ลบ project ได้เฉพาะ admin ที่เป็นผู้สร้าง — backend ตัดสิน (GET /api/projects/deletable) และเช็คซ้ำตอนลบ
+  const [canDelete, setCanDelete] = useState(false);
 
   const openEdit = () => {
     setEditForm({
@@ -170,12 +172,18 @@ export default function ProjectDetail() {
   };
 
   const handleDelete = async () => {
-    if (
-      !window.confirm(
-        `ลบ Project "${project.name}" ทิ้งถาวร?\n\n⚠ การลบจะลบข้อมูลที่เกี่ยวข้องทั้งหมด (position request, shortlist, booking, assignment, mobilization checklist) ไปด้วย กู้คืนไม่ได้`,
-      )
-    )
+    // ให้พิมพ์ ON Number ยืนยัน (เหมือนหน้า Manpower Calendar) กันกดพลาด
+    const code = project.masterProjectRecord?.projectCode || project.name;
+    const typed = window.prompt(
+      `ลบ Project "${code} ${project.name}" ทิ้งถาวร?\n\n` +
+        "⚠ การลบจะลบข้อมูลที่เกี่ยวข้องทั้งหมด (position request, shortlist, คำขอ PE, booking, assignment, mobilization checklist, ข้อความ) ไปด้วย กู้คืนไม่ได้\n\n" +
+        `พิมพ์ ${code} เพื่อยืนยัน`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== code) {
+      alert("พิมพ์ไม่ตรง — ยกเลิกการลบ");
       return;
+    }
     try {
       setDeleting(true);
       await axios.delete(`${backendUrl}/api/projects/${id}`, {
@@ -238,6 +246,10 @@ export default function ProjectDetail() {
     fetchProject();
     fetchPositions();
     if (canDiscuss) fetchMessages();
+    axios
+      .get(`${backendUrl}/api/projects/deletable`, { withCredentials: true })
+      .then((res) => setCanDelete((res.data?.ids || []).includes(id)))
+      .catch(() => setCanDelete(false));
   }, [id]);
 
   // ── auto-scroll ไป discussion section ถ้ามี ?tab=discussion ──
@@ -545,13 +557,16 @@ export default function ProjectDetail() {
               >
                 ✏️ Edit
               </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 cursor-pointer rounded-lg border border-red-200 bg-white px-3.5 py-[7px] text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed sm:flex-none"
-              >
-                {deleting ? "กำลังลบ..." : "🗑 Delete"}
-              </button>
+              {canDelete && (
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  title="ลบ project นี้ (เฉพาะ project ที่คุณสร้าง)"
+                  className="flex-1 cursor-pointer rounded-lg border border-red-200 bg-white px-3.5 py-[7px] text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed sm:flex-none"
+                >
+                  {deleting ? "กำลังลบ..." : "🗑 Delete"}
+                </button>
+              )}
             </div>
           )}
         </div>
