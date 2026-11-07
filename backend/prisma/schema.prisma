@@ -1083,6 +1083,11 @@ model Assignment {
 
   projectLabel String?  // ← ใช้เมื่อ projectId = null (manual/historical entry จาก HR)
 
+  // ประวัติเดินทาง (Past Deployment History — ตามไฟล์ "แจ้งการเดินทางกลับ" ของ HR)
+  travelTeamNo String?  // Traveling Team No. เช่น "Chevron On.Q000"
+  travelOut    String?  // ขาไป  เช่น "เรือ สัตหีบ"
+  travelBack   String?  // ขากลับ เช่น "เรือ สัตหีบ"
+
   booking  Booking?  @relation(fields: [bookingId], references: [id])
   employee Employee  @relation(fields: [employeeId], references: [id])
   project  Project?  @relation(fields: [projectId], references: [id])

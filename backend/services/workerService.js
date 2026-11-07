@@ -352,17 +352,34 @@ export async function updateMedical(medicalId, data) {
 // สร้าง Assignment ที่ไม่ผูก Booking/Project จริง (bookingId=null, projectId=null)
 // ใช้ backfill ประวัติเก่าที่ไม่เคยอยู่ในระบบ (ก่อนเริ่มใช้ Mobilization flow)
 // ════════════════════════════════════════════════════════════════
+// ช่องข้อความของประวัติเดินทาง (ตามไฟล์ "แจ้งการเดินทางกลับ" ของ HR)
+//   travelTeamNo = Traveling Team No. · travelOut = ขาไป · travelBack = ขากลับ · remark = หมายเหตุ
+const cleanText = (v, max = 200) => {
+  const s = typeof v === "string" ? v.trim().slice(0, max) : "";
+  return s || null;
+};
+
+function buildDeploymentData(data) {
+  return {
+    positionId: data.positionId || null,
+    projectLabel: data.projectLabel || null,
+    platform: data.platform || null,
+    mobDate: data.mobDate ? new Date(data.mobDate) : null,
+    demobDate: data.demobDate ? new Date(data.demobDate) : null,
+    travelTeamNo: cleanText(data.travelTeamNo, 100),
+    travelOut: cleanText(data.travelOut, 100),
+    travelBack: cleanText(data.travelBack, 100),
+    remark: cleanText(data.remark, 500),
+  };
+}
+
 export async function createDeployment(employeeId, data) {
   return prisma.assignment.create({
     data: {
       employeeId,
       bookingId: null,
       projectId: null,
-      positionId: data.positionId || null,
-      projectLabel: data.projectLabel || null,
-      platform: data.platform || null,
-      mobDate: data.mobDate ? new Date(data.mobDate) : null,
-      demobDate: data.demobDate ? new Date(data.demobDate) : null,
+      ...buildDeploymentData(data),
       status: "completed", // ของเก่าถือว่าจบไปแล้วเสมอ
     },
   });
@@ -371,13 +388,7 @@ export async function createDeployment(employeeId, data) {
 export async function updateDeployment(deploymentId, data) {
   return prisma.assignment.update({
     where: { id: deploymentId },
-    data: {
-      positionId: data.positionId || null,
-      projectLabel: data.projectLabel || null,
-      platform: data.platform || null,
-      mobDate: data.mobDate ? new Date(data.mobDate) : null,
-      demobDate: data.demobDate ? new Date(data.demobDate) : null,
-    },
+    data: buildDeploymentData(data),
   });
 }
 

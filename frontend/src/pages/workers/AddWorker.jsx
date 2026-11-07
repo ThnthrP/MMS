@@ -598,6 +598,10 @@ export default function AddWorker() {
         platform: "",
         mobDate: "",
         demobDate: "",
+        travelTeamNo: "",
+        travelOut: "",
+        travelBack: "",
+        remark: "",
       },
       ...prev,
     ]);
@@ -759,6 +763,10 @@ export default function AddWorker() {
             platform: dep.platform || null,
             mobDate: dep.mobDate || null,
             demobDate: dep.demobDate || null,
+            travelTeamNo: dep.travelTeamNo || null,
+            travelOut: dep.travelOut || null,
+            travelBack: dep.travelBack || null,
+            remark: dep.remark || null,
           },
           { withCredentials: true },
         );
@@ -1516,6 +1524,9 @@ export default function AddWorker() {
                         <th className={`${TH} ${HIDE_MOBILE}`}>Position</th>
                         <th className={TH}>MOB Date</th>
                         <th className={`${TH} ${HIDE_MOBILE}`}>D-MOB Date</th>
+                        <th className={`${TH} ${HIDE_MOBILE}`}>
+                          การเดินทาง / หมายเหตุ
+                        </th>
                         <th className={`${TH} text-right`}>Actions</th>
                       </tr>
                     </thead>
@@ -1523,7 +1534,7 @@ export default function AddWorker() {
                       {deployments.map((dep, index) =>
                         editingDeploymentId === dep.id ? (
                           <tr key={dep.id}>
-                            <td colSpan={6} className={TD}>
+                            <td colSpan={7} className={TD}>
                               <div className={EDIT_PANEL}>
                                 <EditPanelHeader
                                   label={`Deployment #${deployments.length - index}`}
@@ -1638,7 +1649,7 @@ export default function AddWorker() {
 
                                 <div className="mt-3">
                                   <label className={LABEL}>
-                                    Platform (optional เช่น BELQ, C5)
+                                    Platform / สถานที่เดินทาง (optional เช่น BELQ, C5)
                                   </label>
                                   <input
                                     type="text"
@@ -1653,14 +1664,58 @@ export default function AddWorker() {
                                     className={`${INPUT} sm:max-w-[200px]`}
                                   />
                                 </div>
+
+                                {/* ข้อมูลเดินทาง — ตามไฟล์ "แจ้งการเดินทางกลับ" ของ HR (import ได้ด้วย scripts/importDeploymentHistory.js) */}
+                                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                  {[
+                                    ["travelTeamNo", "Traveling Team No.", "เช่น Chevron On.Q000"],
+                                    ["travelOut", "ขาไป (เดินทางโดย / จาก)", "เช่น เรือ สัตหีบ"],
+                                    ["travelBack", "ขากลับ (เดินทางโดย / จาก)", "เช่น เรือ สัตหีบ"],
+                                  ].map(([key, label, ph]) => (
+                                    <div key={key}>
+                                      <label className={LABEL}>{label}</label>
+                                      <input
+                                        type="text"
+                                        value={dep[key] || ""}
+                                        onChange={(e) =>
+                                          handleDeploymentChange(dep.id, key, e.target.value)
+                                        }
+                                        placeholder={ph}
+                                        className={INPUT}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="mt-3">
+                                  <label className={LABEL}>หมายเหตุ</label>
+                                  <input
+                                    type="text"
+                                    value={dep.remark || ""}
+                                    onChange={(e) =>
+                                      handleDeploymentChange(dep.id, "remark", e.target.value)
+                                    }
+                                    className={INPUT}
+                                  />
+                                </div>
                               </div>
                             </td>
                           </tr>
                         ) : (
                           <tr key={dep.id}>
-                            <td className={TD}>{dep.client || DASH}</td>
+                            <td className={TD}>
+                              {dep.client || DASH}
+                              {dep.travelTeamNo && (
+                                <div className="text-[11px] text-gray-500">{dep.travelTeamNo}</div>
+                              )}
+                            </td>
                             <td className={`${TD} ${HIDE_MOBILE}`}>
                               {dep.field || dep.platform || DASH}
+                              {/* มี Field แล้ว → แสดง Platform เป็นบรรทัดรอง (ไม่งั้นข้อมูลแท่นหายจากตาราง) */}
+                              {dep.field && dep.platform && (
+                                <div className="text-[11px] text-gray-500">
+                                  Platform: {dep.platform}
+                                </div>
+                              )}
                             </td>
                             <td className={`${TD} ${HIDE_MOBILE}`}>
                               {positionNameById(dep.positionId)}
@@ -1672,6 +1727,24 @@ export default function AddWorker() {
                               className={`${TD} ${HIDE_MOBILE} whitespace-nowrap`}
                             >
                               {formatDateDisplay(dep.demobDate)}
+                            </td>
+                            <td className={`${TD} ${HIDE_MOBILE} text-xs`}>
+                              {!dep.travelOut && !dep.travelBack && !dep.remark && DASH}
+                              {dep.travelOut && (
+                                <div className="whitespace-nowrap">
+                                  <span className="text-gray-500">ไป:</span> {dep.travelOut}
+                                </div>
+                              )}
+                              {dep.travelBack && (
+                                <div className="whitespace-nowrap">
+                                  <span className="text-gray-500">กลับ:</span> {dep.travelBack}
+                                </div>
+                              )}
+                              {dep.remark && (
+                                <div className="mt-0.5 text-[11px] text-gray-500">
+                                  {dep.remark}
+                                </div>
+                              )}
                             </td>
                             <td className={TD}>
                               <RowActions
