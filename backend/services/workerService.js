@@ -200,6 +200,8 @@ export async function createWorker(data) {
   const buildData = (code) => ({
     empCode: code,
     fullName: data.fullName,
+    // ชื่ออังกฤษที่หน้า Workers / dropdown ค้นหาใช้ = ชื่อตาม passport (fullName)
+    fullNameEN: data.fullName || undefined, // ไม่ส่ง fullName มา = ไม่แตะ
     fullNameTH: data.fullNameTH || null, // ← เพิ่ม
     empId: data.empId || null, // ← เพิ่ม
     nationality: data.nationality || null,
@@ -527,6 +529,9 @@ export async function updateWorker(id, data) {
     data: {
       empCode: data.empCode,
       fullName: data.fullName,
+      // แก้ชื่อที่หน้า EditWorker แล้วต้องเปลี่ยนชื่ออังกฤษตามด้วย
+      // (เดิม fullNameEN มาจาก Data Import แล้วไม่เคยถูกแก้ → หน้า Workers ยังโชว์ชื่อเก่า)
+      fullNameEN: data.fullName || undefined, // ไม่ส่ง fullName มา = ไม่แตะ
       fullNameTH: data.fullNameTH || null,
       empId: data.empId || null,
       nationality: data.nationality || null,
