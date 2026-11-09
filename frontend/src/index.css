@@ -19,3 +19,14 @@
     cursor: pointer;
   }
 }
+
+/* placeholder จางลง — ทุกช่องทั้งระบบ */
+input::placeholder,
+textarea::placeholder {
+  color: #adb5bd;
+  opacity: 1;
+}
+/* placeholder ของ react-select (class ลงท้าย -placeholder) */
+[class*="-placeholder"] {
+  color: #adb5bd !important;
+}
