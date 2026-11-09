@@ -17,6 +17,8 @@ const TEAM_FIELDS = [
   ["travelOut", "ขาไป (เดินทางโดย/จาก)", "e.g. เรือ สัตหีบ"],
   ["travelBack", "ขากลับ (เดินทางโดย/จาก)", "e.g. เรือ สัตหีบ"],
 ];
+// หัวข้อย่อยในแผง "กรอกให้ทุกคน"
+const BULK_SUB = "mb-1 text-[11px] font-semibold text-gray-600";
 const EMPTY_TEAM = Object.fromEntries(TEAM_FIELDS.map(([k]) => [k, ""]));
 // ค่าตั้งต้นของทีม: เอาจากคนที่ Deploy แล้วก่อน (ข้อมูลที่บันทึกจริง)
 const seedTeam = (rows) =>
@@ -1199,6 +1201,11 @@ export default function Mobilization() {
     [filteredRows],
   );
   const bulkTargets = bulkFieldTargets;
+  // ข้อมูลการเดินทางของทีม: ทุกคนที่ยังไม่ Deploy (ไม่ขึ้นกับตำแหน่งที่กรอง)
+  const teamTargetCount = useMemo(
+    () => rows.filter((r) => !r.deployed).length,
+    [rows],
+  );
   const applyBulkFields = () => {
     if (!bulkHasValue || bulkFieldTargets.length === 0) return;
     const patch = Object.fromEntries(
@@ -2009,14 +2016,36 @@ export default function Mobilization() {
           </div>
         )}
 
-        {/* ── ข้อมูลการเดินทางของทีม (ทั้งทีมเหมือนกัน) ── */}
-        {hasRows && canManageMobilization && rows.some((r) => !r.deployed) && (
-          <div className="border-b border-gray-100 px-2.5 py-2.5">
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
-              ข้อมูลการเดินทางของทีม
-              <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
-                — ใช้กับทุกคนที่ยังไม่ Deploy ({rows.filter((r) => !r.deployed).length} คน) ·
-                บันทึกตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
+        {/* ── กรอกให้ทุกคน: 1 แผง 2 แถว ──
+            แถว 1 การเดินทางของทีม — ทั้งทีมเหมือนกัน → ใช้กับทุกคนที่ยังไม่ Deploy ทันที (ไม่ขึ้นกับตำแหน่งที่กรอง)
+            แถว 2 MOB / D-MOB — กดปุ่มใช้กับคนที่แสดงอยู่ แล้วแก้รายคนในตารางได้
+            ปุ่ม 🦺 หัวข้ออบรม อยู่หัวแผง (ใช้กับคนที่แสดงอยู่เหมือนแถว 2) */}
+        {hasRows && canManageMobilization && teamTargetCount > 0 && (
+          <div className="border-b border-gray-100 bg-gray-50/60 px-2.5 py-2.5">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
+                กรอกให้ทุกคน · พนักงานที่ยังไม่ Deploy {teamTargetCount} คน
+                <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
+                  — บันทึกลงระบบตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
+                </span>
+              </div>
+              {bulkFieldTargets.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBulkOpen(true)}
+                  aria-haspopup="dialog"
+                  className={`cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
+                >
+                  🦺 หัวข้ออบรม ({bulkFieldTargets.length} คน)
+                </button>
+              )}
+            </div>
+
+            {/* แถว 1: การเดินทางของทีม */}
+            <div className={BULK_SUB}>
+              ① การเดินทาง
+              <span className="ml-1 font-normal text-gray-400">
+                — ทั้งทีมเหมือนกัน · พิมพ์แล้วใช้กับทุกคนทันที
               </span>
             </div>
             <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 xl:grid-cols-5">
@@ -2036,54 +2065,43 @@ export default function Mobilization() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
 
-        {/* ── กรอกให้ทุกคน: MOB / D-MOB ── */}
-        {hasRows && canManageMobilization && bulkFieldTargets.length > 0 && (
-          <div className="border-b border-gray-100 bg-gray-50/60 px-2.5 py-2.5">
-            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
-                กรอกให้ทุกคน · พนักงานที่ยังไม่ Deploy {bulkFieldTargets.length} คน
-                {positionFilter !== "all" ? " (ตำแหน่งที่เลือก)" : ""}
-                <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
-                  — ช่องที่เว้นว่างจะไม่ถูกเปลี่ยน
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setBulkOpen(true)}
-                aria-haspopup="dialog"
-                className={`cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
-              >
-                🦺 หัวข้ออบรม ({bulkFieldTargets.length} คน)
-              </button>
-            </div>
-            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] lg:max-w-[600px]">
-              {[
-                ["mobDate", "MOB (วันลงงาน)", "date"],
-                ["demobDate", "D-MOB (วันเดินทางกลับ)", "date"],
-              ].map(([field, label, type, ph]) => (
-                <div key={field}>
-                  <label className={LABEL_SM}>{label}</label>
-                  <input
-                    type={type}
-                    placeholder={ph}
-                    value={bulkFields[field]}
-                    onChange={(e) => setBulkField(field, e.target.value)}
-                    className={INPUT}
-                  />
+            {/* แถว 2: MOB / D-MOB */}
+            {bulkFieldTargets.length > 0 && (
+              <>
+                <div className={`${BULK_SUB} mt-3`}>
+                  ② วันลงงาน / วันเดินทางกลับ
+                  <span className="ml-1 font-normal text-gray-400">
+                    — กดปุ่มเพื่อใช้กับทุกคน{positionFilter !== "all" ? "ในตำแหน่งที่เลือก" : ""} ·
+                    แก้รายคนได้ในตาราง · ช่องที่เว้นว่างไม่ถูกเปลี่ยน
+                  </span>
                 </div>
-              ))}
-              <button
-                type="button"
-                onClick={applyBulkFields}
-                disabled={!bulkHasValue}
-                className="col-span-2 min-h-[34px] cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 text-xs font-bold text-white hover:bg-[#22265f] disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1"
-              >
-                ใช้กับทุกคน ({bulkFieldTargets.length})
-              </button>
-            </div>
+                <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] lg:max-w-[600px]">
+                  {[
+                    ["mobDate", "MOB (วันลงงาน)", "date"],
+                    ["demobDate", "D-MOB (วันเดินทางกลับ)", "date"],
+                  ].map(([field, label, type]) => (
+                    <div key={field}>
+                      <label className={LABEL_SM}>{label}</label>
+                      <input
+                        type={type}
+                        value={bulkFields[field]}
+                        onChange={(e) => setBulkField(field, e.target.value)}
+                        className={INPUT}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={applyBulkFields}
+                    disabled={!bulkHasValue}
+                    className="col-span-2 min-h-[34px] cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 text-xs font-bold text-white hover:bg-[#22265f] disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1"
+                  >
+                    ใช้กับ {bulkFieldTargets.length} คน
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
