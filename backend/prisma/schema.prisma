@@ -1087,6 +1087,7 @@ model Assignment {
   travelTeamNo String?  // Traveling Team No. เช่น "Chevron On.Q000"
   travelOut    String?  // ขาไป  เช่น "เรือ สัตหีบ"
   travelBack   String?  // ขากลับ เช่น "เรือ สัตหีบ"
+  field        String?  // Field / Block เช่น B8/32
 
   booking  Booking?  @relation(fields: [bookingId], references: [id])
   employee Employee  @relation(fields: [employeeId], references: [id])

@@ -6,6 +6,11 @@ const prisma = new PrismaClient();
 
 const DEMOB_DAYS = 28; // rotation 4 สัปดาห์
 const norm = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+// ข้อความสั้นจากฟอร์ม → trim + จำกัดความยาว · ว่าง = null
+const cleanText = (v, max = 100) => {
+  const s = typeof v === "string" ? v.trim().slice(0, max) : "";
+  return s || null;
+};
 
 // ── Pre-Mob Checklist: 6 ไฟล์ตามที่พี่บอยส่งมา ──
 const CHECKLIST_TASK_TYPES = [
@@ -219,6 +224,10 @@ export async function getMobilizationList(projectId) {
               demobDate: asg.demobDate,
               platform: asg.platform,
               fromLocation: asg.fromLocation,
+              field: asg.field,
+              travelTeamNo: asg.travelTeamNo,
+              travelOut: asg.travelOut,
+              travelBack: asg.travelBack,
               status: asg.status,
               createdAt: asg.createdAt,
               updatedAt: asg.updatedAt,
@@ -299,7 +308,10 @@ export async function updateChecklistTask(
 
 // ════════════════════════════════════════════════════════════════
 // POST — Deploy to Site (Step 11) → สร้าง Assignment
-// deployments: [{ employeeId, mobDate, platform }]
+// deployments: [{ employeeId, mobDate, demobDate, platform, fromLocation,
+//                 field, travelTeamNo, travelOut, travelBack }]
+//   field / travelTeamNo / travelOut / travelBack = ข้อมูลการเดินทางของทีม
+//   (กรอกครั้งเดียวที่หน้า Mobilization — ตรงกับใบแจ้งการเดินทางของ HR)
 //   D-MOB = mobDate + 28 (คำนวณ backend)
 //   idempotent: ลบ assignment เดิม (bookingId=null) ของ employee+project ก่อน
 //
@@ -337,6 +349,10 @@ export async function deployToSite({ projectId, deployments }) {
         demobDate: demob,
         platform: d.platform,
         fromLocation: d.fromLocation ?? null, // ← ใหม่
+        field: cleanText(d.field),
+        travelTeamNo: cleanText(d.travelTeamNo),
+        travelOut: cleanText(d.travelOut),
+        travelBack: cleanText(d.travelBack),
         status,
       },
     });

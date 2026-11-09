@@ -7,6 +7,26 @@ import { Link, useSearchParams } from "react-router-dom";
 
 const DEMOB_DAYS = 28;
 
+// ข้อมูลการเดินทางของทีม — ทั้งทีมเหมือนกัน (ตามใบแจ้งการเดินทางของ HR)
+// กรอกครั้งเดียว ใช้กับทุกคนที่ยังไม่ Deploy · MOB / D-MOB ยังแก้รายคนได้ในตาราง
+// ชื่อ field ตรงกับ Past Deployment History ในหน้า EditWorker
+const TEAM_FIELDS = [
+  ["travelTeamNo", "Traveling Team No.", "e.g. Chevron On.Q000"],
+  ["field", "Field", "e.g. B8/32"],
+  ["platform", "สถานที่เดินทาง (Platform)", "e.g. BELQ"],
+  ["travelOut", "ขาไป (เดินทางโดย/จาก)", "e.g. เรือ สัตหีบ"],
+  ["travelBack", "ขากลับ (เดินทางโดย/จาก)", "e.g. เรือ สัตหีบ"],
+];
+const EMPTY_TEAM = Object.fromEntries(TEAM_FIELDS.map(([k]) => [k, ""]));
+// ค่าตั้งต้นของทีม: เอาจากคนที่ Deploy แล้วก่อน (ข้อมูลที่บันทึกจริง)
+const seedTeam = (rows) =>
+  Object.fromEntries(
+    TEAM_FIELDS.map(([k]) => {
+      const src = rows.find((r) => r.deployed && r[k]) || rows.find((r) => r[k]);
+      return [k, src?.[k] || ""];
+    }),
+  );
+
 // ══════════════════════════════════════════════════════════
 // ข้อมูลคงที่
 // ══════════════════════════════════════════════════════════
@@ -315,7 +335,8 @@ function deployBlockReason(r) {
   if (!medicalFit(r.medicalExpiry, r.medicalStatus).fit)
     return "Medical ไม่ผ่าน / หมดอายุ";
   if (!r.mobDate) return "ยังไม่ได้กรอกวัน MOB";
-  if (!r.platform) return "ยังไม่ได้กรอก Platform";
+  if (!r.platform)
+    return "ยังไม่ได้กรอกสถานที่เดินทาง (Platform) ในข้อมูลการเดินทางของทีม";
   return null;
 }
 const isReady = (r) => deployBlockReason(r) === null;
@@ -579,6 +600,11 @@ export default function Mobilization() {
   const [applyingBulk, setApplyingBulk] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
 
+  // ── ข้อมูลการเดินทางของทีม ──
+  const [team, setTeam] = useState(EMPTY_TEAM);
+  const teamRef = useRef(EMPTY_TEAM); // ค่าล่าสุดสำหรับ fetchList
+  const teamProjectRef = useRef(null); // project ที่ team เป็นของ
+
   // ── Checklist modal ──
   const [checklistModal, setChecklistModal] = useState(null); // row object
   const [savingTaskId, setSavingTaskId] = useState(null);
@@ -627,6 +653,10 @@ export default function Mobilization() {
           : addDays(mobDate, DEMOB_DAYS),
         fromLocation: asg?.fromLocation ?? w.previousPlatform ?? "",
         platform: asg?.platform ?? "",
+        field: asg?.field ?? "",
+        travelTeamNo: asg?.travelTeamNo ?? "",
+        travelOut: asg?.travelOut ?? "",
+        travelBack: asg?.travelBack ?? "",
         deployed: !!asg,
         deployedAt: asg?.createdAt ?? null,
         checklist: w.checklist ?? [],
@@ -673,19 +703,29 @@ export default function Mobilization() {
       }
       setBulkEntries(seed);
 
+      // ข้อมูลการเดินทางของทีม: เปิด project ใหม่ → ตั้งต้นจากข้อมูลที่บันทึกไว้
+      // project เดิม (โหลดซ้ำหลัง deploy) → ใช้ค่าที่กำลังกรอกอยู่ต่อ
+      const nextTeam =
+        teamProjectRef.current === projectId
+          ? teamRef.current
+          : seedTeam(freshRows);
+      teamProjectRef.current = projectId;
+      teamRef.current = nextTeam;
+      setTeam(nextTeam);
+
       // รักษาค่าที่พิมพ์ไว้ในเครื่องของคนที่ "ยังไม่ deploy"
       // ไม่ให้ถูกรีเซ็ตตอน fetchList ถูกเรียกใหม่จากการ deploy คนอื่น
       setRows((prevRows) =>
         freshRows.map((fresh) => {
           if (fresh.deployed) return fresh;
+          const base = { ...fresh, ...nextTeam };
           const prev = prevRows.find((r) => r.employeeId === fresh.employeeId);
-          if (!prev || prev.deployed) return fresh;
+          if (!prev || prev.deployed) return base;
           return {
-            ...fresh,
+            ...base,
             mobDate: prev.mobDate,
             demobDate: prev.demobDate,
             fromLocation: prev.fromLocation,
-            platform: prev.platform,
           };
         }),
       );
@@ -703,6 +743,9 @@ export default function Mobilization() {
   useEffect(() => {
     if (!selectedProjectId) {
       fetchReqRef.current++;
+      teamProjectRef.current = null;
+      teamRef.current = EMPTY_TEAM;
+      setTeam(EMPTY_TEAM);
       setProject(null);
       setRows([]);
       setPositionSummary([]);
@@ -906,9 +949,20 @@ export default function Mobilization() {
       prev.map((r) => (r.employeeId === employeeId ? { ...r, ...patch } : r)),
     );
 
-  // ── กรอกให้ทุกคน (From / Platform / MOB / D-MOB) ──
+  // ── ข้อมูลการเดินทางของทีม: แก้แล้วใช้กับทุกคนที่ยังไม่ Deploy ทันที (ทุกตำแหน่ง)
+  // คนที่ Deploy แล้วคงค่าที่บันทึกไว้ · บันทึกลงฐานข้อมูลตอนกด Deploy
+  const setTeamField = (field, value) => {
+    const next = { ...teamRef.current, [field]: value };
+    teamRef.current = next;
+    setTeam(next);
+    setRows((prev) =>
+      prev.map((r) => (r.deployed ? r : { ...r, [field]: value })),
+    );
+  };
+
+  // ── กรอกให้ทุกคน (MOB / D-MOB) ──
   // ใช้กับคนที่ยังไม่ Deploy ในรายการที่แสดงอยู่ (ตามตำแหน่งที่กรอง) · ช่องที่เว้นว่าง = ไม่เปลี่ยน
-  const EMPTY_BULK = { fromLocation: "", platform: "", mobDate: "", demobDate: "" };
+  const EMPTY_BULK = { mobDate: "", demobDate: "" };
   const [bulkFields, setBulkFields] = useState(EMPTY_BULK);
   const setBulkField = (field, value) =>
     setBulkFields((f) => {
@@ -933,6 +987,10 @@ export default function Mobilization() {
             demobDate: r.demobDate,
             fromLocation: r.fromLocation,
             platform: r.platform,
+            field: r.field,
+            travelTeamNo: r.travelTeamNo,
+            travelOut: r.travelOut,
+            travelBack: r.travelBack,
           })),
         },
         { withCredentials: true },
@@ -1951,7 +2009,37 @@ export default function Mobilization() {
           </div>
         )}
 
-        {/* ── กรอกให้ทุกคน: From / Platform / MOB / D-MOB ── */}
+        {/* ── ข้อมูลการเดินทางของทีม (ทั้งทีมเหมือนกัน) ── */}
+        {hasRows && canManageMobilization && rows.some((r) => !r.deployed) && (
+          <div className="border-b border-gray-100 px-2.5 py-2.5">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
+              ข้อมูลการเดินทางของทีม
+              <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
+                — ใช้กับทุกคนที่ยังไม่ Deploy ({rows.filter((r) => !r.deployed).length} คน) ·
+                บันทึกตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
+              </span>
+            </div>
+            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 xl:grid-cols-5">
+              {TEAM_FIELDS.map(([field, label, ph]) => (
+                <div key={field}>
+                  <label className={LABEL_SM}>
+                    {label}
+                    {field === "platform" && <span className="text-red-500"> *</span>}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={ph}
+                    value={team[field]}
+                    onChange={(e) => setTeamField(field, e.target.value)}
+                    className={INPUT}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── กรอกให้ทุกคน: MOB / D-MOB ── */}
         {hasRows && canManageMobilization && bulkFieldTargets.length > 0 && (
           <div className="border-b border-gray-100 bg-gray-50/60 px-2.5 py-2.5">
             <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
@@ -1971,12 +2059,10 @@ export default function Mobilization() {
                 🦺 หัวข้ออบรม ({bulkFieldTargets.length} คน)
               </button>
             </div>
-            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto] lg:max-w-[900px]">
+            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] lg:max-w-[600px]">
               {[
-                ["fromLocation", "From", "text", "e.g. STH"],
-                ["platform", "Platform", "text", "e.g. BELQ"],
-                ["mobDate", "MOB", "date"],
-                ["demobDate", "D-MOB", "date"],
+                ["mobDate", "MOB (วันลงงาน)", "date"],
+                ["demobDate", "D-MOB (วันเดินทางกลับ)", "date"],
               ].map(([field, label, type, ph]) => (
                 <div key={field}>
                   <label className={LABEL_SM}>{label}</label>
@@ -2047,19 +2133,11 @@ export default function Mobilization() {
 
                     <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
                       <div>
-                        <label className={LABEL_SM}>From</label>
-                        {renderInput(r, "fromLocation", "text", "e.g. STH")}
-                      </div>
-                      <div>
-                        <label className={LABEL_SM}>Platform</label>
-                        {renderInput(r, "platform", "text", "e.g. BELQ")}
-                      </div>
-                      <div>
-                        <label className={LABEL_SM}>MOB</label>
+                        <label className={LABEL_SM}>MOB (วันลงงาน)</label>
                         {renderInput(r, "mobDate", "date")}
                       </div>
                       <div>
-                        <label className={LABEL_SM}>D-MOB</label>
+                        <label className={LABEL_SM}>D-MOB (วันเดินทางกลับ)</label>
                         {renderInput(r, "demobDate", "date")}
                       </div>
                     </div>
@@ -2072,20 +2150,19 @@ export default function Mobilization() {
 
             {/* จอใหญ่ (lg+): ตาราง */}
             <div className="hidden max-h-[560px] overflow-auto lg:block">
-              <table className="w-full min-w-[980px] table-fixed border-collapse">
+              <table className="w-full min-w-[900px] table-fixed border-collapse">
                 <colgroup>
-                  {/* Worker 15 · Health 10 (พอสำหรับ "Temporary unfit") · Medical 9 · Checklist 8
-                      · From 8 · MOB 11 · D-MOB 11 · Platform 8 · Status 10 · Actions 10 */}
-                  <col className="w-[15%]" />
+                  {/* Worker 20 · Health 11 (พอสำหรับ "Temporary unfit") · Medical 10 · Checklist 9
+                      · MOB 13 · D-MOB 13 · Status 12 · Actions 12
+                      (Field / สถานที่เดินทาง ฯลฯ ทั้งทีมเหมือนกัน → กรอกที่ข้อมูลการเดินทางของทีม) */}
+                  <col className="w-[20%]" />
+                  <col className="w-[11%]" />
                   <col className="w-[10%]" />
                   <col className="w-[9%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[10%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -2094,10 +2171,8 @@ export default function Mobilization() {
                       "Health Risk",
                       "Medical",
                       "Pre-Mob Checklist",
-                      "From",
-                      "MOB",
-                      "D-MOB",
-                      "Platform",
+                      "MOB (วันลงงาน)",
+                      "D-MOB (วันเดินทางกลับ)",
                       "Status",
                       "Actions",
                     ].map((h) => (
@@ -2120,16 +2195,10 @@ export default function Mobilization() {
                           {renderChecklistBtn(r)}
                         </td>
                         <td className={TD}>
-                          {renderInput(r, "fromLocation", "text", "e.g. STH")}
-                        </td>
-                        <td className={TD}>
                           {renderInput(r, "mobDate", "date")}
                         </td>
                         <td className={TD}>
                           {renderInput(r, "demobDate", "date")}
-                        </td>
-                        <td className={TD}>
-                          {renderInput(r, "platform", "text", "e.g. BELQ")}
                         </td>
                         <td className={TD}>{renderStatus(r, true)}</td>
                         <td className={TD}>{renderActions(r, false)}</td>
