@@ -122,30 +122,24 @@ export default function Workers() {
     ...new Set(workers.map((w) => w.position?.name).filter(Boolean)),
   ];
 
-  const workerOptions = [
-    { value: "", label: "All Workers" },
-    ...buildWorkerOptions(workers),
-  ];
+  // ตัวกรองไม่มีตัวเลือก "All …" — ไม่เลือก = ทั้งหมด (แสดงเป็น placeholder สีจาง)
+  // ปุ่ม ✕ จึงขึ้นเฉพาะตอนกรองอยู่จริง
+  const workerOptions = buildWorkerOptions(workers);
   const departmentOptions = [
-    { value: "", label: "All Departments" },
     ...departments.map((dept) => ({ value: dept, label: dept })),
   ];
   const positionOptions = [
-    { value: "", label: "All Positions" },
     ...positions.map((pos) => ({ value: pos, label: pos })),
   ];
   const statusOptions = [
-    { value: "", label: "All Status" },
     { value: "active", label: "Active" },
     { value: "inactive", label: "Inactive" },
   ];
   const availabilityOptions = [
-    { value: "", label: "All Availability" },
     { value: "available", label: "Available" },
     { value: "unavailable", label: "Unavailable" },
   ];
   const mobilizationOptions = [
-    { value: "", label: "All Mobilization" },
     { value: "pending", label: "Pending" },
     { value: "ready", label: "Ready" },
     { value: "on_site", label: "On-Site" },
