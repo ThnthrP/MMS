@@ -355,7 +355,7 @@ export async function updateMedical(medicalId, data) {
 // ใช้ backfill ประวัติเก่าที่ไม่เคยอยู่ในระบบ (ก่อนเริ่มใช้ Mobilization flow)
 // ════════════════════════════════════════════════════════════════
 // ช่องข้อความของประวัติเดินทาง (ตามไฟล์ "แจ้งการเดินทางกลับ" ของ HR)
-//   travelTeamNo = Traveling Team No. · travelOut = ขาไป · travelBack = ขากลับ · remark = หมายเหตุ
+//   travelTeamNo = Traveling Team No. (ON Number) · field = Field · travelOut = ขาไป · travelBack = ขากลับ · remark = หมายเหตุ
 const cleanText = (v, max = 200) => {
   const s = typeof v === "string" ? v.trim().slice(0, max) : "";
   return s || null;
@@ -368,6 +368,7 @@ function buildDeploymentData(data) {
     platform: data.platform || null,
     mobDate: data.mobDate ? new Date(data.mobDate) : null,
     demobDate: data.demobDate ? new Date(data.demobDate) : null,
+    field: cleanText(data.field, 100), // Field เช่น BENCHAMAS (แยกจาก projectLabel)
     travelTeamNo: cleanText(data.travelTeamNo, 100),
     travelOut: cleanText(data.travelOut, 100),
     travelBack: cleanText(data.travelBack, 100),

@@ -85,7 +85,10 @@ async function seedChecklistTasks(bookingId, existingTasks) {
 export async function getMobilizationList(projectId) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    include: { contract: { include: { client: true } } },
+    include: {
+      contract: { include: { client: true } },
+      masterProjectRecord: { select: { projectCode: true } }, // ON Number = Traveling Team No.
+    },
   });
   if (!project) return null;
 
@@ -251,7 +254,9 @@ export async function getMobilizationList(projectId) {
       id: project.id,
       name: project.name,
       location: project.location || null,
+      projectCode: project.masterProjectRecord?.projectCode || null,
       startDate: project.startDate,
+      endDate: project.endDate, // Working end → ค่าตั้งต้น D-MOB
       client: project.contract?.client?.name || null,
     },
     demobDays: DEMOB_DAYS,

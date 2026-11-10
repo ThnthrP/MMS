@@ -10,24 +10,34 @@ const DEMOB_DAYS = 28;
 // ข้อมูลการเดินทางของทีม — ทั้งทีมเหมือนกัน (ตามใบแจ้งการเดินทางของ HR)
 // กรอกครั้งเดียว ใช้กับทุกคนที่ยังไม่ Deploy · MOB / D-MOB ยังแก้รายคนได้ในตาราง
 // ชื่อ field ตรงกับ Past Deployment History ในหน้า EditWorker
+//   travelTeamNo = ON Number ของ requirement (ดึงจากระบบ แก้ไม่ได้)
+//   Project (ชื่อ requirement) แสดงต่อจาก Traveling Team No. — ดึงจากระบบ แก้ไม่ได้ ไม่ได้อยู่ในลิสต์นี้
 const TEAM_FIELDS = [
-  ["travelTeamNo", "Traveling Team No.", "e.g. Chevron On.Q000"],
-  ["field", "Field", "e.g. B8/32"],
+  ["travelTeamNo", "Traveling Team No. (ON Number)", "", true],
+  ["field", "Field", "e.g. BENCHAMAS"],
   ["platform", "สถานที่เดินทาง (Platform)", "e.g. BELQ"],
-  ["travelOut", "ขาไป (เดินทางโดย/จาก)", "e.g. เรือ สัตหีบ"],
-  ["travelBack", "ขากลับ (เดินทางโดย/จาก)", "e.g. เรือ สัตหีบ"],
+  ["travelOut", "ขาไป (เดินทางโดย/จาก)", "e.g. boat STH"],
+  ["travelBack", "ขากลับ (เดินทางโดย/จาก)", "e.g. boat STH"],
 ];
 // หัวข้อย่อยในแผง "กรอกให้ทุกคน"
 const BULK_SUB = "mb-1 text-[11px] font-semibold text-gray-600";
 const EMPTY_TEAM = Object.fromEntries(TEAM_FIELDS.map(([k]) => [k, ""]));
 // ค่าตั้งต้นของทีม: เอาจากคนที่ Deploy แล้วก่อน (ข้อมูลที่บันทึกจริง)
-const seedTeam = (rows) =>
-  Object.fromEntries(
+//   Traveling Team No. = ON Number ของ requirement เสมอ · Field ยังไม่เคยกรอก → ใช้ Location ของ requirement
+const seedTeam = (rows, project) => {
+  const team = Object.fromEntries(
     TEAM_FIELDS.map(([k]) => {
       const src = rows.find((r) => r.deployed && r[k]) || rows.find((r) => r[k]);
       return [k, src?.[k] || ""];
     }),
   );
+  return withProjectTeam(team, project);
+};
+const withProjectTeam = (team, project) => ({
+  ...team,
+  travelTeamNo: project?.projectCode || team.travelTeamNo || "",
+  field: team.field || project?.location || "",
+});
 
 // ══════════════════════════════════════════════════════════
 // ข้อมูลคงที่
@@ -338,7 +348,7 @@ function deployBlockReason(r) {
     return "Medical ไม่ผ่าน / หมดอายุ";
   if (!r.mobDate) return "ยังไม่ได้กรอกวัน MOB";
   if (!r.platform)
-    return "ยังไม่ได้กรอกสถานที่เดินทาง (Platform) ในข้อมูลการเดินทางของทีม";
+    return "ยังไม่ได้กรอกสถานที่เดินทาง (Platform) ในแผงกรอกให้ทุกคน";
   return null;
 }
 const isReady = (r) => deployBlockReason(r) === null;
@@ -650,9 +660,11 @@ export default function Mobilization() {
       return {
         ...w,
         mobDate,
+        // ตั้งต้น = Working end ของ requirement (ไม่มี → MOB + 28 วัน)
         demobDate: asg?.demobDate
           ? ymd(asg.demobDate)
-          : addDays(mobDate, DEMOB_DAYS),
+          : (!asg?.mobDate && ymd(data.project.endDate)) ||
+            addDays(mobDate, DEMOB_DAYS),
         fromLocation: asg?.fromLocation ?? w.previousPlatform ?? "",
         platform: asg?.platform ?? "",
         field: asg?.field ?? "",
@@ -707,10 +719,12 @@ export default function Mobilization() {
 
       // ข้อมูลการเดินทางของทีม: เปิด project ใหม่ → ตั้งต้นจากข้อมูลที่บันทึกไว้
       // project เดิม (โหลดซ้ำหลัง deploy) → ใช้ค่าที่กำลังกรอกอยู่ต่อ
-      const nextTeam =
-        teamProjectRef.current === projectId
-          ? teamRef.current
-          : seedTeam(freshRows);
+      const isNewProject = teamProjectRef.current !== projectId;
+      const nextTeam = isNewProject
+        ? seedTeam(freshRows, data.project)
+        : withProjectTeam(teamRef.current, data.project);
+      // MOB / D-MOB ตั้งต้นจาก Working start / end ของ requirement (แก้ได้)
+      if (isNewProject) setBulkFields(projectBulkDefaults(data.project));
       teamProjectRef.current = projectId;
       teamRef.current = nextTeam;
       setTeam(nextTeam);
@@ -965,6 +979,14 @@ export default function Mobilization() {
   // ── กรอกให้ทุกคน (MOB / D-MOB) ──
   // ใช้กับคนที่ยังไม่ Deploy ในรายการที่แสดงอยู่ (ตามตำแหน่งที่กรอง) · ช่องที่เว้นว่าง = ไม่เปลี่ยน
   const EMPTY_BULK = { mobDate: "", demobDate: "" };
+  // ค่าตั้งต้น = Working start / end ของ requirement (ไม่มีวันจบ → MOB + 28 วัน)
+  const projectBulkDefaults = (p) => {
+    const mob = ymd(p?.startDate) || "";
+    return {
+      mobDate: mob,
+      demobDate: ymd(p?.endDate) || (mob ? addDays(mob, DEMOB_DAYS) : ""),
+    };
+  };
   const [bulkFields, setBulkFields] = useState(EMPTY_BULK);
   const setBulkField = (field, value) =>
     setBulkFields((f) => {
@@ -1201,6 +1223,12 @@ export default function Mobilization() {
     [filteredRows],
   );
   const bulkTargets = bulkFieldTargets;
+  // ปุ่มของ ② กดได้เฉพาะตอนที่วันในช่องต่างจากวันของคนในรายการ (ไม่งั้นกดไปก็ไม่มีอะไรเปลี่ยน)
+  const bulkWouldChange = bulkFieldTargets.some(
+    (r) =>
+      (bulkFields.mobDate && r.mobDate !== bulkFields.mobDate) ||
+      (bulkFields.demobDate && r.demobDate !== bulkFields.demobDate),
+  );
   // ข้อมูลการเดินทางของทีม: ทุกคนที่ยังไม่ Deploy (ไม่ขึ้นกับตำแหน่งที่กรอง)
   const teamTargetCount = useMemo(
     () => rows.filter((r) => !r.deployed).length,
@@ -1225,7 +1253,6 @@ export default function Mobilization() {
       return;
     const ids = new Set(bulkFieldTargets.map((r) => r.employeeId));
     setRows((prev) => prev.map((r) => (ids.has(r.employeeId) ? { ...r, ...patch } : r)));
-    setBulkFields(EMPTY_BULK);
   };
 
   const showPositionFilter = positionSummary.length > 1;
@@ -1916,9 +1943,9 @@ export default function Mobilization() {
         {project && (
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-gray-500">
             <span>
-              Start (default MOB):{" "}
-              <strong>{ymd(project.startDate) || "—"}</strong> · D-MOB = MOB +{" "}
-              {DEMOB_DAYS} วัน
+              Working start: <strong>{ymd(project.startDate) || "—"}</strong> · Working
+              end: <strong>{ymd(project.endDate) || "—"}</strong>
+              <span className="text-gray-400"> — ใช้เป็นค่าตั้งต้นของ MOB / D-MOB</span>
             </span>
             {hasRows &&
               positionSummary.length > 0 &&
@@ -2026,7 +2053,7 @@ export default function Mobilization() {
               <div className="text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
                 กรอกให้ทุกคน · พนักงานที่ยังไม่ Deploy {teamTargetCount} คน
                 <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
-                  — บันทึกลงระบบตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
+                  — บันทึกเป็นประวัติลงงานใน CV ตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
                 </span>
               </div>
               {bulkFieldTargets.length > 0 && (
@@ -2045,23 +2072,41 @@ export default function Mobilization() {
             <div className={BULK_SUB}>
               ① การเดินทาง
               <span className="ml-1 font-normal text-gray-400">
-                — ทั้งทีมเหมือนกัน · พิมพ์แล้วใช้กับทุกคนทันที
+                — ทั้งทีมเหมือนกัน · พิมพ์แล้วใช้กับทุกคนทันที <b className="text-gray-500">ไม่ต้องกดปุ่ม</b> ·
+                ช่องสีเทาดึงจาก requirement
               </span>
             </div>
-            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3 xl:grid-cols-5">
-              {TEAM_FIELDS.map(([field, label, ph]) => (
-                <div key={field}>
-                  <label className={LABEL_SM}>
-                    {label}
-                    {field === "platform" && <span className="text-red-500"> *</span>}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={ph}
-                    value={team[field]}
-                    onChange={(e) => setTeamField(field, e.target.value)}
-                    className={INPUT}
-                  />
+            <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-3">
+              {TEAM_FIELDS.map(([field, label, ph, locked]) => (
+                <div key={field} className="contents">
+                  <div>
+                    <label className={LABEL_SM}>
+                      {label}
+                      {field === "platform" && <span className="text-red-500"> *</span>}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={locked ? "—" : ph}
+                      value={team[field]}
+                      onChange={(e) => setTeamField(field, e.target.value)}
+                      disabled={locked}
+                      title={locked ? "ON Number ของ requirement นี้ — แก้ที่หน้า Projects" : undefined}
+                      className={`${INPUT} disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-600`}
+                    />
+                  </div>
+                  {/* Project ต่อจาก Traveling Team No. (ลำดับตามไฟล์ HR) */}
+                  {field === "travelTeamNo" && (
+                    <div>
+                      <label className={LABEL_SM}>Project</label>
+                      <input
+                        type="text"
+                        value={project?.name || ""}
+                        disabled
+                        title="ชื่อ requirement — แก้ที่หน้า Requirement"
+                        className={`${INPUT} cursor-not-allowed bg-gray-100 text-gray-600`}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -2072,11 +2117,12 @@ export default function Mobilization() {
                 <div className={`${BULK_SUB} mt-3`}>
                   ② วันลงงาน / วันเดินทางกลับ
                   <span className="ml-1 font-normal text-gray-400">
-                    — กดปุ่มเพื่อใช้กับทุกคน{positionFilter !== "all" ? "ในตำแหน่งที่เลือก" : ""} ·
-                    แก้รายคนได้ในตาราง · ช่องที่เว้นว่างไม่ถูกเปลี่ยน
+                    — ในตารางตั้งต้นเป็น Working start / end แล้ว · ใช้เมื่อทั้งทีม
+                    {positionFilter !== "all" ? "ในตำแหน่งที่เลือก" : ""}เปลี่ยนวัน: เลือกวันแล้วกดปุ่มข้างช่อง ·
+                    คนที่วันต่างจากทีม แก้รายคนในตาราง
                   </span>
                 </div>
-                <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] lg:max-w-[600px]">
+                <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[repeat(2,minmax(0,1fr))_auto] lg:max-w-[760px]">
                   {[
                     ["mobDate", "MOB (วันลงงาน)", "date"],
                     ["demobDate", "D-MOB (วันเดินทางกลับ)", "date"],
@@ -2094,10 +2140,13 @@ export default function Mobilization() {
                   <button
                     type="button"
                     onClick={applyBulkFields}
-                    disabled={!bulkHasValue}
+                    disabled={!bulkHasValue || !bulkWouldChange}
+                    title={!bulkWouldChange ? "ทุกคนในรายการใช้วันนี้อยู่แล้ว" : undefined}
                     className="col-span-2 min-h-[34px] cursor-pointer whitespace-nowrap rounded-md border-none bg-[#2B2F78] px-3.5 text-xs font-bold text-white hover:bg-[#22265f] disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1"
                   >
-                    ใช้กับ {bulkFieldTargets.length} คน
+                    {bulkWouldChange
+                      ? `ใช้ MOB / D-MOB นี้กับ ${bulkFieldTargets.length} คน`
+                      : "✓ ทุกคนใช้วันนี้แล้ว"}
                   </button>
                 </div>
               </>

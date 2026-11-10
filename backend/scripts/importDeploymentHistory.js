@@ -3,11 +3,15 @@
 //
 //   node scripts/importDeploymentHistory.js <file.xlsx>            ← dry-run (ไม่เขียน DB)
 //   node scripts/importDeploymentHistory.js <file.xlsx> --apply    ← เขียนจริง
-//   ตัวเลือก: --client=Chevron  (ถ้าเดา client จาก Traveling Team No. ไม่ได้ ใช้ค่านี้)
+//   ตัวเลือก: --client=Chevron  (ใช้เมื่อคอลัมน์ Project ว่าง)
+//             --quiet          (ไม่พิมพ์ทีละแถว — แสดงเฉพาะสรุป เหมาะกับไฟล์ใหญ่)
+//
+// คอลัมน์ (ไฟล์ 10 พ.ย. 2569): Traveling Team No. = ON Number · Project = เช่น Chevron · Field = เช่น BENCHAMAS
+//   ข้อความใน CV (projectLabel) = "Supply Manpower for {Project} : {Field}" — ตรงกับหน้า Edit Worker
 //
 // 1 แถว = พนักงาน 1 คน ใน 1 รอบลงงาน · หัวคอลัมน์อ่านจากแถวแรก (ชื่อตามแม่แบบ)
 // จับคู่พนักงานด้วย Employee ID — ตัดช่องว่าง/ขีด ทั้งฝั่งไฟล์และฝั่งระบบ ("3856 1667" = "38561667")
-// ซ้ำได้ (idempotent): คนเดิม + วันลงงานเดิม + project เดิม → อัปเดตแถวเดิม ไม่สร้างซ้ำ
+// ซ้ำได้ (idempotent): คนเดิม + วันลงงานเดิม → อัปเดตแถวเดิม ไม่สร้างซ้ำ (รวมแถวที่ import ด้วยรูปแบบเก่า)
 // ⚠ ไฟล์มีชื่อ/รหัสพนักงานจริง — อย่า commit เข้า git และลบออกจาก server หลัง import
 // ══════════════════════════════════════════════════════════
 import ExcelJS from "exceljs";
@@ -17,6 +21,7 @@ const prisma = new PrismaClient();
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
 const APPLY = args.includes("--apply");
+const QUIET = args.includes("--quiet");
 const DEFAULT_CLIENT =
   (args.find((a) => a.startsWith("--client=")) || "").split("=")[1] || "";
 
@@ -89,8 +94,10 @@ const composeProjectLabel = (client, field, platform) => {
   if (platform) return `Supply Manpower for ${client} at ${platform}`;
   return `Supply Manpower for ${client}`;
 };
+// ไฟล์รุ่นแรก Project ว่าง/เป็นชื่องาน และ Traveling Team No. มีชื่อลูกค้า (เช่น "Chavron On.Q000")
 const guessClient = (teamNo) =>
   /ch[ae]vron/i.test(teamNo || "") ? "Chevron" : DEFAULT_CLIENT;
+const fixClientName = (s) => String(s || "").trim().replace(/^ch[ae]vron$/i, "Chevron");
 
 async function main() {
   const wb = new ExcelJS.Workbook();
@@ -125,6 +132,7 @@ async function main() {
     const r = Object.fromEntries(Object.keys(HEADERS).map((h) => [HEADERS[h], get(HEADERS[h])]));
     if (!normId(r.empId) && !r.name) return; // แถวว่าง
     if (/^เพิ่มใหม่|^ตาราง$/.test(String(r.empId)) || String(r.name) === "ตาราง") return; // แถวคำอธิบายของแม่แบบ
+    if (/ตัวอย่าง/.test(String(r.name))) return; // แถวตัวอย่างของแม่แบบ
     rows.push({ n, ...r });
   });
 
@@ -137,6 +145,7 @@ async function main() {
   });
 
   const report = { create: 0, update: 0, skip: [] };
+  const seenInFile = new Set(); // คนเดิม + วันลงงานเดิม ซ้ำในไฟล์
   const today = new Date();
 
   for (const r of rows) {
@@ -152,9 +161,12 @@ async function main() {
     const demobDate = toDate(r.demobDate);
     if (!mobDate) { skip(`วันลงงานอ่านไม่ได้ (${r.mobDate || "ว่าง"})`); continue; }
     if (demobDate && demobDate < mobDate) { skip("วันเดินทางกลับก่อนวันลงงาน"); continue; }
+    const dupKey = `${emp.id}|${ymd(mobDate)}`;
+    if (seenInFile.has(dupKey)) { skip("ซ้ำในไฟล์ (คนเดิม วันลงงานเดิม)"); continue; }
+    seenInFile.add(dupKey);
 
-    const client = guessClient(r.teamNo);
-    const field = [r.project, r.field && `Field: ${r.field}`].filter(Boolean).join(" ");
+    const client = fixClientName(r.project) || guessClient(r.teamNo);
+    const field = String(r.field || "").trim();
     const platform = r.platform || null;
     const positionId = posByName.get(String(r.position || "").trim().toLowerCase()) || null;
     const remark = [
@@ -169,6 +181,7 @@ async function main() {
       platform,
       mobDate,
       demobDate,
+      field: field || null,
       travelTeamNo: r.teamNo || null,
       travelOut: r.travelOut || null,
       travelBack: r.travelBack || null,
@@ -188,17 +201,17 @@ async function main() {
     if (live) { skip("รอบนี้มีในระบบแล้วจาก Worker Schedule (MOB ใกล้กัน ±3 วัน)"); continue; }
 
     const existing = await prisma.assignment.findFirst({
-      where: { employeeId: emp.id, projectId: null, mobDate, projectLabel: data.projectLabel },
+      where: { employeeId: emp.id, projectId: null, mobDate },
       select: { id: true },
     });
     const tag = `${emp.empCode} ${emp.fullNameTH || emp.fullName} · ${ymd(mobDate)} → ${ymd(demobDate)} · ${data.projectLabel}`;
     if (existing) {
       report.update++;
-      console.log(`  ↻ อัปเดต  ${tag}`);
+      if (!QUIET) console.log(`  ↻ อัปเดต  ${tag}`);
       if (APPLY) await prisma.assignment.update({ where: { id: existing.id }, data });
     } else {
       report.create++;
-      console.log(`  + เพิ่ม    ${tag}`);
+      if (!QUIET) console.log(`  + เพิ่ม    ${tag}`);
       if (APPLY)
         await prisma.assignment.create({
           data: { ...data, employeeId: emp.id, bookingId: null, projectId: null, status: "completed" },

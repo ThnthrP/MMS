@@ -34,6 +34,17 @@ const formatFileSize = (bytes) => {
 
 const isPdfFile = (nameOrUrl) => /\.pdf(\?|$)/i.test(nameOrUrl || "");
 
+// Past Deployment — ช่องข้อความตามไฟล์ประวัติลงงานของ HR (ภาษาไทย (อังกฤษ))
+//   client = Project (เช่น Chevron) · ข้อความใน CV = composeProjectLabel(Project, Field, Platform)
+const DEPLOYMENT_TEXT_FIELDS = [
+  ["travelTeamNo", "Traveling Team No. (ON Number)", "เช่น ON/000-01/2026"],
+  ["client", "Project", "เช่น Chevron"],
+  ["field", "Field", "เช่น BENCHAMAS"],
+  ["platform", "สถานที่เดินทาง (Platform)", "เช่น BELQ"],
+  ["travelOut", "ขาไป (เดินทางโดย/จาก)", "เช่น boat STH"],
+  ["travelBack", "ขากลับ (เดินทางโดย/จาก)", "เช่น boat STH"],
+];
+
 const composeProjectLabel = (client, field, platform) => {
   if (!client) return "";
   if (field) return `Supply Manpower for ${client} : ${field}`;
@@ -657,7 +668,8 @@ export default function EditWorker() {
             id: a.id,
             dbId: a.id,
             client,
-            field,
+            // Field แยกคอลัมน์แล้ว — ข้อมูลเก่าที่ไม่มี ใช้ค่าที่แยกจาก projectLabel
+            field: a.field || field,
             positionId: a.positionId || "",
             platform: a.platform || "",
             mobDate: toDateInput(a.mobDate),
@@ -1077,6 +1089,7 @@ export default function EditWorker() {
         platform: dep.platform || null,
         mobDate: dep.mobDate || null,
         demobDate: dep.demobDate || null,
+        field: dep.field || null,
         travelTeamNo: dep.travelTeamNo || null,
         travelOut: dep.travelOut || null,
         travelBack: dep.travelBack || null,
@@ -2003,17 +2016,29 @@ export default function EditWorker() {
                   />
                 ) : (
                   <table className="w-full border-collapse text-[13px]">
+                    {/* หัวตารางตามไฟล์ประวัติลงงานของ HR — ภาษาไทย (อังกฤษ) */}
                     <thead>
                       <tr>
-                        <th className={TH}>Client / Project</th>
-                        <th className={`${TH} ${HIDE_MOBILE}`}>
-                          Field / Platform
+                        <th className={`${TH} ${HIDE_MOBILE}`}>ตำแหน่ง (Position)</th>
+                        <th className={TH}>
+                          Project
+                          <div className="font-normal normal-case text-gray-400">
+                            Traveling Team No.
+                          </div>
                         </th>
-                        <th className={`${TH} ${HIDE_MOBILE}`}>Position</th>
-                        <th className={TH}>MOB Date</th>
-                        <th className={`${TH} ${HIDE_MOBILE}`}>D-MOB Date</th>
                         <th className={`${TH} ${HIDE_MOBILE}`}>
-                          การเดินทาง / หมายเหตุ
+                          Field
+                          <div className="font-normal normal-case text-gray-400">
+                            สถานที่เดินทาง (Platform)
+                          </div>
+                        </th>
+                        <th className={TH}>วันลงงาน (MOB)</th>
+                        <th className={`${TH} ${HIDE_MOBILE}`}>วันเดินทางกลับ (D-MOB)</th>
+                        <th className={`${TH} ${HIDE_MOBILE}`}>
+                          ขาไป / ขากลับ
+                          <div className="font-normal normal-case text-gray-400">
+                            หมายเหตุ
+                          </div>
                         </th>
                         <th className={`${TH} text-right`}>Actions</th>
                       </tr>
@@ -2030,69 +2055,10 @@ export default function EditWorker() {
                                   onRemove={() => removeDeployment(dep)}
                                 />
 
-                                <div className={`${GRID2} mb-3`}>
-                                  <div>
-                                    <label className={LABEL}>
-                                      Client{" "}
-                                      <span className="font-normal normal-case text-gray-500">
-                                        (เช่น Chevron)
-                                      </span>
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={dep.client}
-                                      onChange={(e) =>
-                                        handleDeploymentChange(
-                                          dep.id,
-                                          "client",
-                                          e.target.value,
-                                        )
-                                      }
-                                      placeholder="e.g., Chevron"
-                                      className={INPUT}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={LABEL}>
-                                      Field / Site{" "}
-                                      <span className="font-normal normal-case text-gray-500">
-                                        (optional — ถ้าไม่กรอกจะใช้ Platform
-                                        แทนตอนแสดงผล)
-                                      </span>
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={dep.field}
-                                      onChange={(e) =>
-                                        handleDeploymentChange(
-                                          dep.id,
-                                          "field",
-                                          e.target.value,
-                                        )
-                                      }
-                                      placeholder="e.g., FDS Construction Benchams Field: B8/32"
-                                      className={INPUT}
-                                    />
-                                  </div>
-                                </div>
-
-                                {dep.client && (
-                                  <div className="mb-3 break-words rounded-md bg-[#f0f7ff] px-2.5 py-1.5 text-[11px] text-blue-600">
-                                    Preview: "
-                                    {composeProjectLabel(
-                                      dep.client,
-                                      dep.field,
-                                      dep.platform,
-                                    )}
-                                    "
-                                  </div>
-                                )}
-
+                                {/* ลำดับช่องตามไฟล์ประวัติลงงานของ HR */}
                                 <div className={GRID3}>
                                   <div>
-                                    <label className={LABEL}>
-                                      Position (ตอนนั้น)
-                                    </label>
+                                    <label className={LABEL}>ตำแหน่ง (Position)</label>
                                     <Select
                                       {...SELECT_PROPS}
                                       options={positionOptions}
@@ -2112,66 +2078,7 @@ export default function EditWorker() {
                                       isClearable
                                     />
                                   </div>
-                                  <div>
-                                    <label className={LABEL}>MOB Date</label>
-                                    <input
-                                      type="date"
-                                      value={dep.mobDate}
-                                      onChange={(e) =>
-                                        handleDeploymentChange(
-                                          dep.id,
-                                          "mobDate",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className={INPUT}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={LABEL}>D-MOB Date</label>
-                                    <input
-                                      type="date"
-                                      value={dep.demobDate}
-                                      onChange={(e) =>
-                                        handleDeploymentChange(
-                                          dep.id,
-                                          "demobDate",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className={INPUT}
-                                    />
-                                  </div>
-                                </div>
-
-                                <div className="mt-3">
-                                  <label className={LABEL}>
-                                    Platform / สถานที่เดินทาง{" "}
-                                    <span className="font-normal normal-case text-gray-500">
-                                      (optional เช่น BELQ, C5)
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="text"
-                                    value={dep.platform}
-                                    onChange={(e) =>
-                                      handleDeploymentChange(
-                                        dep.id,
-                                        "platform",
-                                        e.target.value,
-                                      )
-                                    }
-                                    className={`${INPUT} sm:max-w-[200px]`}
-                                  />
-                                </div>
-
-                                {/* ข้อมูลเดินทาง — ตามไฟล์ "แจ้งการเดินทางกลับ" ของ HR (import ได้ด้วย scripts/importDeploymentHistory.js) */}
-                                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                  {[
-                                    ["travelTeamNo", "Traveling Team No.", "เช่น Chevron On.Q000"],
-                                    ["travelOut", "ขาไป (เดินทางโดย / จาก)", "เช่น เรือ สัตหีบ"],
-                                    ["travelBack", "ขากลับ (เดินทางโดย / จาก)", "เช่น เรือ สัตหีบ"],
-                                  ].map(([key, label, ph]) => (
+                                  {DEPLOYMENT_TEXT_FIELDS.slice(0, 2).map(([key, label, ph]) => (
                                     <div key={key}>
                                       <label className={LABEL}>{label}</label>
                                       <input
@@ -2186,6 +2093,63 @@ export default function EditWorker() {
                                     </div>
                                   ))}
                                 </div>
+
+                                <div className={`${GRID3} mt-3`}>
+                                  {DEPLOYMENT_TEXT_FIELDS.slice(2, 3).map(([key, label, ph]) => (
+                                    <div key={key}>
+                                      <label className={LABEL}>{label}</label>
+                                      <input
+                                        type="text"
+                                        value={dep[key] || ""}
+                                        onChange={(e) =>
+                                          handleDeploymentChange(dep.id, key, e.target.value)
+                                        }
+                                        placeholder={ph}
+                                        className={INPUT}
+                                      />
+                                    </div>
+                                  ))}
+                                  <div>
+                                    <label className={LABEL}>วันลงงาน (MOB)</label>
+                                    <input
+                                      type="date"
+                                      value={dep.mobDate}
+                                      onChange={(e) =>
+                                        handleDeploymentChange(dep.id, "mobDate", e.target.value)
+                                      }
+                                      className={INPUT}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className={LABEL}>วันเดินทางกลับ (D-MOB)</label>
+                                    <input
+                                      type="date"
+                                      value={dep.demobDate}
+                                      onChange={(e) =>
+                                        handleDeploymentChange(dep.id, "demobDate", e.target.value)
+                                      }
+                                      className={INPUT}
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className={`${GRID3} mt-3`}>
+                                  {DEPLOYMENT_TEXT_FIELDS.slice(3).map(([key, label, ph]) => (
+                                    <div key={key}>
+                                      <label className={LABEL}>{label}</label>
+                                      <input
+                                        type="text"
+                                        value={dep[key] || ""}
+                                        onChange={(e) =>
+                                          handleDeploymentChange(dep.id, key, e.target.value)
+                                        }
+                                        placeholder={ph}
+                                        className={INPUT}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+
                                 <div className="mt-3">
                                   <label className={LABEL}>หมายเหตุ</label>
                                   <input
@@ -2197,11 +2161,21 @@ export default function EditWorker() {
                                     className={INPUT}
                                   />
                                 </div>
+
+                                {dep.client && (
+                                  <div className="mt-3 break-words rounded-md bg-[#f0f7ff] px-2.5 py-1.5 text-[11px] text-blue-600">
+                                    ข้อความใน CV: "
+                                    {composeProjectLabel(dep.client, dep.field, dep.platform)}"
+                                  </div>
+                                )}
                               </div>
                             </td>
                           </tr>
                         ) : (
                           <tr key={dep.id}>
+                            <td className={`${TD} ${HIDE_MOBILE}`}>
+                              {positionNameById(dep.positionId)}
+                            </td>
                             <td className={TD}>
                               {dep.client || DASH}
                               {dep.travelTeamNo && (
@@ -2209,23 +2183,15 @@ export default function EditWorker() {
                               )}
                             </td>
                             <td className={`${TD} ${HIDE_MOBILE}`}>
-                              {dep.field || dep.platform || DASH}
-                              {/* มี Field แล้ว → แสดง Platform เป็นบรรทัดรอง (ไม่งั้นข้อมูลแท่นหายจากตาราง) */}
-                              {dep.field && dep.platform && (
-                                <div className="text-[11px] text-gray-500">
-                                  Platform: {dep.platform}
-                                </div>
+                              {dep.field || DASH}
+                              {dep.platform && (
+                                <div className="text-[11px] text-gray-500">{dep.platform}</div>
                               )}
-                            </td>
-                            <td className={`${TD} ${HIDE_MOBILE}`}>
-                              {positionNameById(dep.positionId)}
                             </td>
                             <td className={`${TD} whitespace-nowrap`}>
                               {formatDateDisplay(dep.mobDate)}
                             </td>
-                            <td
-                              className={`${TD} ${HIDE_MOBILE} whitespace-nowrap`}
-                            >
+                            <td className={`${TD} ${HIDE_MOBILE} whitespace-nowrap`}>
                               {formatDateDisplay(dep.demobDate)}
                             </td>
                             <td className={`${TD} ${HIDE_MOBILE} text-xs`}>
@@ -2241,9 +2207,7 @@ export default function EditWorker() {
                                 </div>
                               )}
                               {dep.remark && (
-                                <div className="mt-0.5 text-[11px] text-gray-500">
-                                  {dep.remark}
-                                </div>
+                                <div className="mt-0.5 text-[11px] text-gray-500">{dep.remark}</div>
                               )}
                             </td>
                             <td className={TD}>
@@ -2257,6 +2221,7 @@ export default function EditWorker() {
                       )}
                     </tbody>
                   </table>
+
                 )}
                 <UpdateButton
                   onClick={handleSaveDeployment}
