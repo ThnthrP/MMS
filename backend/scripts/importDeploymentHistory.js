@@ -12,6 +12,7 @@
 // 1 แถว = พนักงาน 1 คน ใน 1 รอบลงงาน · หัวคอลัมน์อ่านจากแถวแรก (ชื่อตามแม่แบบ)
 // จับคู่พนักงานด้วย Employee ID — ตัดช่องว่าง/ขีด ทั้งฝั่งไฟล์และฝั่งระบบ ("3856 1667" = "38561667")
 // ซ้ำได้ (idempotent): คนเดิม + วันลงงานเดิม → อัปเดตแถวเดิม ไม่สร้างซ้ำ (รวมแถวที่ import ด้วยรูปแบบเก่า)
+// ถ้ารอบนั้นมีแถว roster จาก Data Import อยู่แล้ว (ไม่มี projectLabel) → เติมเฉพาะช่องที่ว่าง ไม่ทับข้อมูล roster
 // ⚠ ไฟล์มีชื่อ/รหัสพนักงานจริง — อย่า commit เข้า git และลบออกจาก server หลัง import
 // ══════════════════════════════════════════════════════════
 import ExcelJS from "exceljs";
@@ -144,7 +145,7 @@ async function main() {
     namesById.get(k).add(normName(r.name));
   });
 
-  const report = { create: 0, update: 0, skip: [] };
+  const report = { create: 0, update: 0, merge: 0, skip: [] };
   const seenInFile = new Set(); // คนเดิม + วันลงงานเดิม ซ้ำในไฟล์
   const today = new Date();
 
@@ -202,9 +203,35 @@ async function main() {
 
     const existing = await prisma.assignment.findFirst({
       where: { employeeId: emp.id, projectId: null, mobDate },
-      select: { id: true },
+      select: {
+        id: true, projectLabel: true, travelTeamNo: true,
+        platform: true, demobDate: true, remark: true, positionId: true,
+      },
     });
     const tag = `${emp.empCode} ${emp.fullNameTH || emp.fullName} · ${ymd(mobDate)} → ${ymd(demobDate)} · ${data.projectLabel}`;
+    // แถว roster เดิม (นำเข้าจาก Data Import — ไม่มี projectLabel) รอบเดียวกัน
+    //   → เติมเฉพาะข้อมูลที่ยังว่าง ไม่ทับวันกลับ / แท่น / หมายเหตุ / ตำแหน่ง ที่ roster มีอยู่
+    //   (ไม่สร้างแถวใหม่ซ้อน — ไม่งั้นส่วน D และ CV จะขึ้นรอบเดียวกัน 2 รายการ)
+    if (existing && !existing.projectLabel && !existing.travelTeamNo) {
+      report.merge++;
+      if (!QUIET) console.log(`  ⊕ เติม roster ${tag}`);
+      if (APPLY)
+        await prisma.assignment.update({
+          where: { id: existing.id },
+          data: {
+            projectLabel: data.projectLabel,
+            field: data.field,
+            travelTeamNo: data.travelTeamNo,
+            travelOut: data.travelOut,
+            travelBack: data.travelBack,
+            positionId: existing.positionId ?? data.positionId,
+            platform: existing.platform ?? data.platform,
+            demobDate: existing.demobDate ?? data.demobDate,
+            remark: existing.remark ?? data.remark,
+          },
+        });
+      continue;
+    }
     if (existing) {
       report.update++;
       if (!QUIET) console.log(`  ↻ อัปเดต  ${tag}`);
@@ -221,7 +248,9 @@ async function main() {
 
   console.log("\n══════════════════════════════");
   console.log(`${APPLY ? "บันทึกแล้ว" : "DRY-RUN (ยังไม่บันทึก)"} · อ่าน ${rows.length} แถว`);
-  console.log(`เพิ่มใหม่ ${report.create} · อัปเดตของเดิม ${report.update} · ข้าม ${report.skip.length}`);
+  console.log(
+    `เพิ่มใหม่ ${report.create} · อัปเดตประวัติเดิม ${report.update} · เติมข้อมูลให้ roster เดิม ${report.merge} · ข้าม ${report.skip.length}`,
+  );
   if (report.skip.length) {
     console.log("\nแถวที่ข้าม (ส่งให้ HR แก้ในไฟล์ แล้วรันใหม่ได้เลย):");
     report.skip.forEach((s) => console.log("  ✕ " + s));
