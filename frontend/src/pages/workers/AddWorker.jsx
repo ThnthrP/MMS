@@ -606,6 +606,7 @@ export default function AddWorker() {
         client: "",
         field: "",
         positionId: "",
+        positionLabel: "",
         platform: "",
         mobDate: "",
         demobDate: "",
@@ -628,6 +629,21 @@ export default function AddWorker() {
     setDeployments((prev) =>
       prev.map((d) => (d.id === localId ? { ...d, [field]: value } : d)),
     );
+
+  // ตำแหน่งในประวัติลงงาน = ตำแหน่ง ณ รอบนั้น (ข้อความตามที่ HR กรอก) แยกจากตำแหน่งปัจจุบัน
+  //   ถ้าพิมพ์ตรงกับชื่อตำแหน่งในระบบ → เก็บ positionId ไว้ด้วย (ใช้หา responsibilities ใน CV)
+  const handlePastPositionChange = (localId, value) => {
+    const match = positions.find(
+      (p) => p.name.trim().toLowerCase() === value.trim().toLowerCase(),
+    );
+    setDeployments((prev) =>
+      prev.map((d) =>
+        d.id === localId
+          ? { ...d, positionLabel: value, positionId: match ? match.id : "" }
+          : d,
+      ),
+    );
+  };
 
   // ── Medical Exams ──
   const addMedicalExam = () => {
@@ -771,6 +787,7 @@ export default function AddWorker() {
               dep.platform,
             ),
             positionId: dep.positionId || null,
+            positionLabel: dep.positionLabel?.trim() || null,
             platform: dep.platform || null,
             mobDate: dep.mobDate || null,
             demobDate: dep.demobDate || null,
@@ -1570,24 +1587,23 @@ export default function AddWorker() {
                                 <div className={GRID3}>
                                   <div>
                                     <label className={LABEL}>ตำแหน่ง (Position)</label>
-                                    <Select
-                                      {...SELECT_PROPS}
-                                      options={positionOptions}
-                                      value={
-                                        positionOptions.find(
-                                          (o) => o.value === dep.positionId,
-                                        ) || null
+                                    {/* ตำแหน่ง ณ รอบนั้น — พิมพ์ตามที่ HR มี (ไม่ต้องตรงกับรายการตำแหน่งในระบบ)
+                                        ตรงกับชื่อในระบบ → ผูก positionId ให้ด้วย */}
+                                    <input
+                                      type="text"
+                                      list="past-position-options"
+                                      value={dep.positionLabel || ""}
+                                      onChange={(e) =>
+                                        handlePastPositionChange(dep.id, e.target.value)
                                       }
-                                      onChange={(o) =>
-                                        handleDeploymentChange(
-                                          dep.id,
-                                          "positionId",
-                                          o ? o.value : "",
-                                        )
-                                      }
-                                      placeholder="เลือกตำแหน่ง..."
-                                      isClearable
+                                      placeholder="พิมพ์หรือเลือกตำแหน่ง..."
+                                      className={INPUT}
                                     />
+                                    <datalist id="past-position-options">
+                                      {positions.map((p) => (
+                                        <option key={p.id} value={p.name} />
+                                      ))}
+                                    </datalist>
                                   </div>
                                   {DEPLOYMENT_TEXT_FIELDS.slice(0, 2).map(([key, label, ph]) => (
                                     <div key={key}>
@@ -1685,7 +1701,7 @@ export default function AddWorker() {
                         ) : (
                           <tr key={dep.id}>
                             <td className={`${TD} ${HIDE_MOBILE}`}>
-                              {positionNameById(dep.positionId)}
+                              {dep.positionLabel || positionNameById(dep.positionId)}
                             </td>
                             <td className={TD}>
                               {dep.client || DASH}

@@ -749,7 +749,7 @@ export async function getCvSummary(projectId) {
               a.project?.name ||
               a.projectLabel || // ← เพิ่ม — สำหรับ manual/historical entry
               (a.platform ? `Deployment at ${a.platform}` : "—"),
-            position: a.position?.name ?? currentPosition,
+            position: a.positionLabel || a.position?.name || currentPosition, // ตำแหน่ง ณ รอบนั้น (ประวัติลงงาน) ก่อน
             mobDate: a.mobDate,
             demobDate: a.demobDate,
             platform: a.platform,
@@ -1119,7 +1119,7 @@ export async function getCvSummaryForWorker(employeeId) {
         a.project?.name ||
         a.projectLabel ||
         (a.platform ? `Deployment at ${a.platform}` : "—"),
-      position: a.position?.name ?? currentPosition,
+      position: a.positionLabel || a.position?.name || currentPosition, // ตำแหน่ง ณ รอบนั้น (ประวัติลงงาน) ก่อน
       mobDate: a.mobDate,
       demobDate: a.demobDate,
       platform: a.platform,

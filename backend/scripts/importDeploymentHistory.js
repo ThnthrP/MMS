@@ -169,16 +169,18 @@ async function main() {
     const client = fixClientName(r.project) || guessClient(r.teamNo);
     const field = String(r.field || "").trim();
     const platform = r.platform || null;
-    const positionId = posByName.get(String(r.position || "").trim().toLowerCase()) || null;
+    // ตำแหน่ง ณ รอบนั้น เก็บตามไฟล์เสมอ (positionLabel) · ตรงกับชื่อในระบบ → ผูก positionId ด้วย
+    const positionLabel = String(r.position || "").trim() || null;
+    const positionId = posByName.get((positionLabel || "").toLowerCase()) || null;
     const remark = [
       r.remark,
-      !positionId && r.position ? `ตำแหน่งตามไฟล์: ${r.position}` : "",
       demobDate && demobDate > today ? "วันกลับตามแผน" : "",
     ].filter(Boolean).join(" · ") || null;
 
     const data = {
       projectLabel: composeProjectLabel(client, field, platform) || null,
       positionId,
+      positionLabel,
       platform,
       mobDate,
       demobDate,
@@ -225,6 +227,7 @@ async function main() {
             travelOut: data.travelOut,
             travelBack: data.travelBack,
             positionId: existing.positionId ?? data.positionId,
+            positionLabel: data.positionLabel,
             platform: existing.platform ?? data.platform,
             demobDate: existing.demobDate ?? data.demobDate,
             remark: existing.remark ?? data.remark,

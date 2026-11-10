@@ -1079,6 +1079,7 @@ model Assignment {
   updatedAt  DateTime @default(now()) @updatedAt
 
   positionId String?     // snapshot ตำแหน่งตอน deploy
+  positionLabel String?  // ตำแหน่ง ณ รอบนั้นตามที่ HR กรอก (ประวัติลงงาน) — แยกจากตำแหน่งปัจจุบัน
   position   Position?   @relation(fields: [positionId], references: [id])
 
   projectLabel String?  // ← ใช้เมื่อ projectId = null (manual/historical entry จาก HR)

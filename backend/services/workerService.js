@@ -364,6 +364,8 @@ const cleanText = (v, max = 200) => {
 function buildDeploymentData(data) {
   return {
     positionId: data.positionId || null,
+    // ตำแหน่ง ณ รอบนั้นตามที่ HR กรอก — แยกจากตำแหน่งปัจจุบันของพนักงาน
+    positionLabel: cleanText(data.positionLabel, 200),
     projectLabel: data.projectLabel || null,
     platform: data.platform || null,
     mobDate: data.mobDate ? new Date(data.mobDate) : null,
