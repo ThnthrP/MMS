@@ -1140,20 +1140,34 @@ export default function Allocation() {
     0,
   );
 
-  const requestsWithCandidates = shortlist.filter(
-    (r) => (r.candidates?.length ?? 0) > 0,
-  );
   // คนที่ยังรอ PE อนุมัติ (% Match ไม่ครบ) — ยังไม่อยู่ใน candidates แต่ต้องรอให้จบก่อน
   const totalPendingPe = shortlist.reduce(
     (sum, r) => sum + (r.peExceptions?.pending?.length ?? 0),
     0,
   );
-  const everyCandidateApproved =
-    requestsWithCandidates.length > 0 &&
-    requestsWithCandidates.every((r) =>
-      r.candidates.every((c) => c.status === "approved"),
-    );
-  const allApproved = everyCandidateApproved && totalPendingPe === 0;
+  // ── ความคืบหน้าทั้งโปรเจกต์ (ทุกตำแหน่ง) ──
+  //   เดิมเช็คแค่ "ทุกคนที่อยู่ในรายชื่อ approve แล้ว" — ตำแหน่งที่ยังไม่มีคนเลยไม่ถูกนับ
+  //   ปุ่มไป Mobilization จึงขึ้นทั้งที่ยังขาดคน → ตอนนี้ต้องครบจำนวนทุกตำแหน่งด้วย
+  const projectProgress = shortlist.reduce(
+    (acc, r) => {
+      const cands = r.candidates ?? [];
+      const approved = cands.filter((c) => c.status === "approved").length;
+      const missing = Math.max(0, (r.quantity ?? 0) - cands.length);
+      acc.needed += r.quantity ?? 0;
+      acc.approved += approved;
+      acc.proposed += cands.length - approved;
+      acc.missing += missing;
+      if (missing > 0) acc.positionsMissing += 1;
+      return acc;
+    },
+    { needed: 0, approved: 0, proposed: 0, missing: 0, positionsMissing: 0 },
+  );
+  const allApproved =
+    shortlist.length > 0 &&
+    projectProgress.needed > 0 &&
+    projectProgress.missing === 0 &&
+    projectProgress.proposed === 0 &&
+    totalPendingPe === 0;
 
   const currentRequestShortlisted = selectedRequest
     ? (shortlist.find((s) => s.requestId === selectedRequest.id)?.candidates
@@ -1979,23 +1993,65 @@ export default function Allocation() {
           </div>
         </div>
 
-        {/* ════════ แจ้งสถานะทั้งโปรเจกต์ ════════ */}
-        {allApproved && (
-          <button
-            type="button"
-            onClick={() =>
-              navigate(`/mobilization?projectId=${selectedProjectId}`)
-            }
-            className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#198754] py-2 text-[13px] font-bold text-white hover:bg-[#157347]"
-          >
-            🚀 ทุกคน Approve แล้ว — ไป Mobilization →
-          </button>
-        )}
-        {everyCandidateApproved && totalPendingPe > 0 && (
-          <div className="mt-3 rounded-lg border border-[#ffe69c] bg-[#fff8e1] px-3 py-2 text-center text-xs font-semibold text-[#664d03]">
-            ⏳ รอ PE อนุมัติอีก {totalPendingPe} คน — ครบแล้วจึงไป Mobilization
-            ได้
-          </div>
+        {/* ════════ ความคืบหน้าทั้งโปรเจกต์ ════════
+            ครบทุกตำแหน่ง + approve ทุกคน + ไม่มีคนรอ PE → ปุ่มเขียว "ไป Mobilization" (ขั้นถัดไปของ flow)
+            ยังไม่ครบ → แถบสรุปบรรทัดเดียว บอกว่าเหลืออะไร (เดิมเป็นแถบเขียวเต็มความกว้าง ขึ้นทั้งที่ยังขาดคน)
+            approve แล้วบางส่วน → ลิงก์รองไป Mobilization ได้ (บางคนขึ้นงานก่อน) */}
+        {selectedProjectId && projectProgress.needed > 0 && (
+          allApproved ? (
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/mobilization?projectId=${selectedProjectId}`)
+              }
+              className="mt-3 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border-none bg-[#198754] py-2 text-[13px] font-bold text-white hover:bg-[#157347]"
+            >
+              🚀 ครบทุกตำแหน่งแล้ว — Approve {projectProgress.approved}/
+              {projectProgress.needed} คน · ไป Mobilization →
+            </button>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs text-gray-600">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-semibold text-gray-800">
+                  ทั้งโปรเจกต์: Approve แล้ว{" "}
+                  <span className="text-[#198754]">{projectProgress.approved}</span>/
+                  {projectProgress.needed} คน
+                </span>
+                {/* แถบความคืบหน้า */}
+                <span className="hidden h-1.5 w-28 overflow-hidden rounded bg-gray-200 sm:inline-block">
+                  <span
+                    className="block h-1.5 rounded bg-[#198754]"
+                    style={{
+                      width: `${Math.min(100, Math.round((projectProgress.approved / projectProgress.needed) * 100))}%`,
+                    }}
+                  />
+                </span>
+                {projectProgress.missing > 0 && (
+                  <span className="font-semibold text-[#dc3545]">
+                    ยังขาด {projectProgress.missing} คน ({projectProgress.positionsMissing} ตำแหน่ง)
+                  </span>
+                )}
+                {projectProgress.proposed > 0 && (
+                  <span className="text-[#664d03]">รอ Approve {projectProgress.proposed} คน</span>
+                )}
+                {totalPendingPe > 0 && (
+                  <span className="text-[#664d03]">รอ PE อนุมัติ {totalPendingPe} คน</span>
+                )}
+              </div>
+              {projectProgress.approved > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/mobilization?projectId=${selectedProjectId}`)
+                  }
+                  title="ไปลงงานเฉพาะคนที่ Approve แล้ว — ที่เหลือจัดต่อได้ภายหลัง"
+                  className={`${LINK_TEXT} whitespace-nowrap text-xs`}
+                >
+                  ไป Mobilization เฉพาะคนที่ Approve แล้ว →
+                </button>
+              )}
+            </div>
+          )
         )}
         {selectedProjectId &&
           selectedProject &&
