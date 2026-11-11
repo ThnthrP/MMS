@@ -10,6 +10,8 @@ import DecisionModal, { fmtRange, toYMD } from "./BookingDecisionModal";
 // Medical Bookings   (/medical-bookings)    → <RequestsHistory type="medical" />
 // 1 แถว = 1 คน (คน × training หรือ คน × การตรวจ) จากทุกคำขอ — แบบโปรแกรมตัวอย่าง
 //   HR กด "Confirm / reject" ที่แถวได้เลย (การ์ด HR confirmation) หรือเลือกหลายคนแล้วทำทีเดียว
+// มุมมอง "รวมตามคำขอ" = 1 แถวต่อ 1 คำขอ (batch) — จัดกลุ่มจากข้อมูลรายคนชุดเดียวกัน (มี batchId อยู่แล้ว)
+//   ตัวกรองด้านบนใช้ร่วมกัน · คำขอจะแสดงถ้ามีอย่างน้อย 1 คนตรงเงื่อนไข
 // คำขอมาจาก:
 //   • ปุ่ม "Request training / medical" ในหน้านี้
 //   • Training Courses › "แจ้ง HR ให้จัด Training"
@@ -18,7 +20,23 @@ import DecisionModal, { fmtRange, toYMD } from "./BookingDecisionModal";
 // ══════════════════════════════════════════════════════════
 
 const LAST_VIEWED_KEY = "trainingRequestLastViewed";
+const VIEW_KEY = "bookingsView"; // "person" | "request" — จำมุมมองล่าสุดไว้ (ต่อเครื่อง)
 const PAGE_SIZE = 20;
+
+const readView = () => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "request" ? "request" : "person";
+  } catch {
+    return "person";
+  }
+};
+const writeView = (v) => {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    // ไม่ critical
+  }
+};
 
 const readLastViewed = () => {
   try {
@@ -178,6 +196,14 @@ function BookingsPage({ requestType }) {
   const [decision, setDecision] = useState(null); // { rows, decision }
   const [saving, setSaving] = useState(false);
   const [lastViewed, setLastViewed] = useState(() => readLastViewed());
+  const [view, setViewState] = useState(() => readView());
+  const isGrouped = view === "request";
+  const setView = (v) => {
+    setViewState(v);
+    writeView(v);
+    setPage(1);
+    setSelected([]);
+  };
 
   // ความสูงกรอบตาราง = พื้นที่ที่เหลือของจอ (วัดจริง) → เห็นแถบเลขหน้าโดยไม่ต้องเลื่อนทั้งหน้า
   //   หน้า Training มีแท็บด้านบน / filter ขึ้นบรรทัดใหม่ตามความกว้างจอ — ค่าคงที่ใช้ไม่ได้
@@ -264,9 +290,41 @@ function BookingsPage({ requestType }) {
   const hasFilter =
     search || dateFrom || dateTo || requesterFilter || subjectFilter || clientFilter || statusFilter !== "open";
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // ── มุมมองรวมตามคำขอ ──
+  //   คำขอที่มีคนตรงเงื่อนไขอย่างน้อย 1 คน · ตัวเลขสถานะนับจากทุกคนในคำขอนั้น
+  const rowsByBatch = {};
+  for (const r of rows) (rowsByBatch[r.batchId] ||= []).push(r);
+  const matchedByBatch = {};
+  for (const r of filtered) (matchedByBatch[r.batchId] ||= []).push(r);
+  const groups = Object.entries(matchedByBatch)
+    .map(([batchId, matched]) => {
+      const all = rowsByBatch[batchId] || matched;
+      const first = all[0];
+      return {
+        batchId,
+        all,
+        matched,
+        subjects: uniqSorted(all.map(subjectOf)),
+        clients: uniqSorted(all.map((r) => r.clientName)),
+        pending: all.filter((r) => r.status === "pending"),
+        confirmed: all.filter((r) => r.status === "confirmed").length,
+        rejected: all.filter((r) => r.status === "rejected").length,
+        requestedStart: first.requestedStart,
+        requestedEnd: first.requestedEnd,
+        provider: first.provider,
+        requestedByName: first.requestedByName,
+        createdAt: first.createdAt,
+        remarks: first.remarks,
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const listLength = isGrouped ? groups.length : filtered.length;
+  const unit = isGrouped ? "คำขอ" : "คน";
+  const totalPages = Math.max(1, Math.ceil(listLength / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pagedGroups = groups.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -281,7 +339,7 @@ function BookingsPage({ requestType }) {
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [totalPages, loading, hasFilter, isTraining, filtered.length]);
+  }, [totalPages, loading, hasFilter, isTraining, filtered.length, view]);
 
   // ── เลือกหลายคน (เฉพาะคนที่รอ HR ในผลการกรอง) ──
   const pendingInView = filtered.filter((r) => r.status === "pending");
@@ -506,6 +564,87 @@ function BookingsPage({ requestType }) {
   // คลิกที่แถว (คนที่รอ HR) = ติ๊ก
   const rowClick = (r) => (e) => r.status === "pending" && !isInteractive(e) && toggle(r.itemId);
 
+  // ── ส่วนของแถวในมุมมองรวมตามคำขอ ──
+  const groupSubjectCell = (g) => (
+    <div className="min-w-0">
+      <Link
+        to={detailPath(g.batchId)}
+        onClick={() => markViewed(g.batchId)}
+        className="font-semibold text-gray-900 no-underline hover:text-[#2B2F78] hover:underline"
+      >
+        {g.subjects.length === 1
+          ? g.subjects[0]
+          : `${g.subjects.length} ${isTraining ? "หลักสูตร" : "รายการตรวจ"}`}
+      </Link>
+      {g.subjects.length > 1 && (
+        <div className="max-w-[320px] truncate text-[11px] text-gray-500" title={g.subjects.join(", ")}>
+          {g.subjects.join(" · ")}
+        </div>
+      )}
+      <div className="text-[11px] text-gray-500">
+        <b className="text-gray-700">{g.all.length}</b> คน
+        {g.matched.length !== g.all.length && <> · ตรงเงื่อนไข {g.matched.length}</>}
+      </div>
+    </div>
+  );
+
+  const groupWhenCell = (g) => {
+    const when = fmtRange(g.requestedStart, g.requestedEnd);
+    if (!when && !g.provider) return <span className="text-gray-400">—</span>;
+    return (
+      <div className="leading-snug text-gray-600">
+        <div className="whitespace-nowrap">{when ? `ขอ ${when}` : "—"}</div>
+        {g.provider && <div className="text-[11px] text-gray-500">{g.provider}</div>}
+      </div>
+    );
+  };
+
+  const groupStatusCell = (g) => (
+    <div className="flex flex-wrap gap-1">
+      {g.pending.length > 0 && (
+        <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS.pending[1]}`}>
+          ⏳ รอ {g.pending.length}
+        </span>
+      )}
+      {g.confirmed > 0 && (
+        <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS.confirmed[1]}`}>
+          ✓ {g.confirmed}
+        </span>
+      )}
+      {g.rejected > 0 && (
+        <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS.rejected[1]}`}>
+          ✕ {g.rejected}
+        </span>
+      )}
+    </div>
+  );
+
+  const groupActionsCell = (g) => (
+    <div className="flex flex-nowrap items-center justify-end gap-2">
+      {g.pending.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setDecision({ rows: g.pending, decision: "confirmed" })}
+          title="ยืนยัน / ปฏิเสธทุกคนที่ยังรอ HR ในคำขอนี้"
+          className={`${BTN} border-[#198754] bg-[#198754] text-white hover:bg-[#157347]`}
+        >
+          Confirm ทั้งคำขอ ({g.pending.length})
+        </button>
+      )}
+      <Link
+        to={detailPath(g.batchId)}
+        onClick={() => markViewed(g.batchId)}
+        onAuxClick={() => markViewed(g.batchId)}
+        title="เปิดคำขอนี้ — ยืนยัน / ปฏิเสธรายคนได้"
+        className="whitespace-nowrap text-xs font-semibold text-blue-600 no-underline hover:underline"
+      >
+        เปิดคำขอ →
+      </Link>
+    </div>
+  );
+
+  const groupRowBg = (g) => (lastViewed?.id === g.batchId ? "bg-[#f8fbff]" : "hover:bg-gray-50");
+
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ หัวหน้า ════════ */}
@@ -674,9 +813,36 @@ function BookingsPage({ requestType }) {
           ))}
           <span className="text-xs text-gray-500">
             · แสดง <strong className="text-gray-900">{filtered.length}</strong> คน
+            {isGrouped && (
+              <>
+                {" "}
+                จาก <strong className="text-gray-900">{groups.length}</strong> คำขอ
+              </>
+            )}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          {/* สลับมุมมอง: รายคน / รวมตามคำขอ */}
+          <div className="mr-1 inline-flex overflow-hidden rounded-md border border-gray-200" role="group" aria-label="มุมมอง">
+            {[
+              ["person", "👤 รายคน"],
+              ["request", "📋 รวมตามคำขอ"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setView(key)}
+                aria-pressed={view === key}
+                className={`cursor-pointer whitespace-nowrap border-none px-2.5 py-1 text-xs font-semibold ${
+                  view === key ? "bg-[#2B2F78] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {!isGrouped && (
+            <>
           {/* มือถือไม่มีหัวตาราง — ใช้ checkbox นี้แทน */}
           <label className="mr-1 flex cursor-pointer items-center gap-2 text-[13px] text-gray-700 lg:hidden">
             <input
@@ -722,11 +888,87 @@ function BookingsPage({ requestType }) {
           >
             ✕ Reject selected
           </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* ════════ รายการรายคน ════════ */}
+      {/* ════════ รายการ ════════ */}
       <div className="border-y border-gray-200">
+        {isGrouped ? (
+          <>
+            {/* ── รวมตามคำขอ: ต่ำกว่า lg ── */}
+            <div className="lg:hidden">
+              {pagedGroups.length === 0 ? (
+                <div className="p-10 text-center text-[13px] text-gray-500">{emptyText}</div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {pagedGroups.map((g) => (
+                    <div key={g.batchId} className={`py-3 text-[13px] ${groupRowBg(g)}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        {groupSubjectCell(g)}
+                        <div className="shrink-0">{groupStatusCell(g)}</div>
+                      </div>
+                      <div className="mt-1 text-xs">
+                        {groupWhenCell(g)}
+                        {g.clients.length > 0 && (
+                          <div className="text-[11px] text-gray-500">Client {g.clients.join(", ")}</div>
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+                        <div className="text-[11px] text-gray-500">
+                          ขอโดย {g.requestedByName || "—"} · {fmtDateTime(g.createdAt)}
+                        </div>
+                        {groupActionsCell(g)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── รวมตามคำขอ: lg+ ── */}
+            <div
+              ref={tableBoxRef}
+              style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
+              className="hidden max-h-[calc(100vh-330px)] min-h-[300px] overflow-auto lg:block"
+            >
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className={TH}>{isTraining ? "Course" : "Check Type"} · จำนวนคน</th>
+                    <th className={TH}>วันที่ / สถานที่ที่ขอ</th>
+                    <th className={TH}>Client</th>
+                    <th className={TH}>Status</th>
+                    <th className={TH}>Requested By</th>
+                    <th className={`${TH} text-right`}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pagedGroups.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-10 text-center text-[13px] text-gray-500">
+                        {emptyText}
+                      </td>
+                    </tr>
+                  ) : (
+                    pagedGroups.map((g) => (
+                      <tr key={g.batchId} className={groupRowBg(g)}>
+                        <td className={`${TD} min-w-[220px] max-w-[360px]`}>{groupSubjectCell(g)}</td>
+                        <td className={TD}>{groupWhenCell(g)}</td>
+                        <td className={`${TD} text-gray-600`}>{g.clients.join(", ") || "—"}</td>
+                        <td className={`${TD} min-w-[130px]`}>{groupStatusCell(g)}</td>
+                        <td className={TD}>{requestedByCell(g)}</td>
+                        <td className={TD}>{groupActionsCell(g)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
         {/* ── ต่ำกว่า lg ── */}
         <div className="lg:hidden">
           {paged.length === 0 ? (
@@ -827,16 +1069,18 @@ function BookingsPage({ requestType }) {
             </tbody>
           </table>
         </div>
+          </>
+        )}
 
         {/* ════════ Pagination ════════ */}
         {/* แสดงทุกหน้า (Training / Medical) — ปุ่มเลขหน้าขึ้นเฉพาะเมื่อเกิน PAGE_SIZE */}
-        {filtered.length > 0 && (
+        {listLength > 0 && (
           <div
             ref={pagerRef}
             className="flex min-h-[54px] flex-wrap items-center justify-between gap-2.5 border-t border-gray-200 py-3 text-xs text-gray-500"
           >
             <span>
-              {totalPages > 1 && `หน้า ${currentPage} / ${totalPages} — `}ทั้งหมด {filtered.length} คน
+              {totalPages > 1 && `หน้า ${currentPage} / ${totalPages} — `}ทั้งหมด {listLength} {unit}
             </span>
             {totalPages > 1 && (
             <div className="flex flex-wrap items-center gap-1">

@@ -10,6 +10,8 @@ import DecisionModal, { fmtRange, toYMD } from "./BookingDecisionModal";
 //   ยืนยัน → ใส่วันที่ที่ศูนย์อบรม / โรงพยาบาลให้จริง + สถานที่ + หมายเหตุ
 //   ปฏิเสธ → ใส่เหตุผล
 // ผู้ขอได้รับแจ้งเตือนทุกครั้งที่ HR ตัดสิน · ไม่เหลือคนรอ → คำขอปิดอัตโนมัติ
+// Training: ชื่อหลักสูตรอยู่ที่หัวหน้า (คำขอส่วนใหญ่มีหลักสูตรเดียว)
+//   คำขอที่มีหลายหลักสูตร → แบ่งรายชื่อเป็นกลุ่มตามหลักสูตร พร้อม checkbox เลือกทั้งกลุ่ม
 // ══════════════════════════════════════════════════════════
 
 // หัวตารางตรึงไว้ตอนเลื่อน (ตารางเลื่อนในกรอบ max-h ของตัวเอง)
@@ -77,6 +79,18 @@ export default function BookingDetail({ type = "training" }) {
     return data.employees || [];
   }, [data, isTraining]);
 
+  // หลักสูตรในคำขอนี้ (Training) — เรียงตามลำดับที่ backend ส่งมา
+  const courseGroups = useMemo(() => {
+    if (!isTraining) return [];
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.trainingId)) map.set(r.trainingId, { trainingId: r.trainingId, trainingName: r.trainingName, rows: [] });
+      map.get(r.trainingId).rows.push(r);
+    }
+    return [...map.values()];
+  }, [rows, isTraining]);
+  const multiCourse = courseGroups.length > 1;
+
   const hasItemIds = rows.some((r) => r.itemId); // backend ใหม่แล้วหรือยัง
   const pendingRows = rows.filter((r) => (r.status || "pending") === "pending");
   const allPendingSelected =
@@ -86,6 +100,12 @@ export default function BookingDetail({ type = "training" }) {
     setSelected((prev) => (prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId]));
   const toggleAll = () =>
     setSelected(allPendingSelected ? [] : pendingRows.map((r) => r.itemId));
+  // เลือก / ยกเลิก ทุกคนที่รอ HR ในหลักสูตรเดียว (คำขอหลายหลักสูตร)
+  const toggleGroup = (groupRows) => {
+    const ids = groupRows.filter((r) => (r.status || "pending") === "pending").map((r) => r.itemId);
+    const allIn = ids.length > 0 && ids.every((x) => selected.includes(x));
+    setSelected((prev) => (allIn ? prev.filter((x) => !ids.includes(x)) : [...new Set([...prev, ...ids])]));
+  };
 
   const save = async (rowsToSave, body) => {
     try {
@@ -128,6 +148,7 @@ export default function BookingDetail({ type = "training" }) {
     );
 
   const counts = data.counts || { pending: rows.length, confirmed: 0, rejected: 0 };
+  const COLS = isTraining ? 5 : 6; // จำนวนคอลัมน์ (Training ไม่มีคอลัมน์หลักสูตร)
   const selectedRows = rows.filter((r) => selected.includes(r.itemId));
 
   // คนที่ยืนยันอบรมแล้ว → ไปบันทึก certification ทั้งกลุ่ม (แยกตามหลักสูตร)
@@ -149,9 +170,21 @@ export default function BookingDetail({ type = "training" }) {
       {/* ════════ หัว ════════ */}
       <div className="flex flex-col gap-2 border-b border-gray-200 pb-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h1 className="m-0 text-lg font-bold">
+          <div className="text-xs font-semibold text-gray-500">
             {isTraining ? "🎓 คำขอจัด Training" : "🏥 คำขอนัดตรวจสุขภาพ"}
+          </div>
+          <h1 className="m-0 text-lg font-bold">
+            {isTraining
+              ? multiCourse
+                ? `${courseGroups.length} หลักสูตร · ${rows.length} คน`
+                : `${courseGroups[0]?.trainingName || "—"} · ${rows.length} คน`
+              : `${rows.length} คน`}
           </h1>
+          {multiCourse && (
+            <div className="mt-0.5 text-[13px] text-gray-600">
+              {courseGroups.map((g) => `${g.trainingName} (${g.rows.length})`).join(" · ")}
+            </div>
+          )}
           <div className="text-[13px] text-gray-500">
             {data.requestedByName ? `ขอโดย ${data.requestedByName} · ` : ""}
             {fmtDateTime(data.createdAt)}
@@ -252,19 +285,47 @@ export default function BookingDetail({ type = "training" }) {
                 </label>
               </th>
               <th className={TH}>พนักงาน</th>
-              <th className={TH}>{isTraining ? "หลักสูตร" : "การตรวจ"}</th>
+              {!isTraining && <th className={TH}>การตรวจ</th>}
               <th className={TH}>ผลจาก HR</th>
               <th className={`${TH} text-center`}>สถานะ</th>
               <th className={`${TH} w-[150px] text-right`}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => {
+            {(isTraining ? courseGroups : [{ trainingId: "all", rows }]).flatMap((g) => {
+              const groupPending = g.rows.filter((r) => (r.status || "pending") === "pending");
+              const groupAllSelected =
+                groupPending.length > 0 && groupPending.every((r) => selected.includes(r.itemId));
+              const header = multiCourse ? (
+                <tr key={`g-${g.trainingId}`} className="bg-[#f5f6fb]">
+                  <td colSpan={COLS} className="border-b border-gray-200 px-3 py-2 text-[13px]">
+                    <label
+                      className={`inline-flex items-center gap-2 ${
+                        hasItemIds && groupPending.length > 0 ? "cursor-pointer" : ""
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={groupAllSelected}
+                        onChange={() => toggleGroup(g.rows)}
+                        disabled={!hasItemIds || groupPending.length === 0}
+                        className="h-[15px] w-[15px] cursor-pointer disabled:cursor-not-allowed"
+                        title="เลือกทุกคนที่รอ HR ในหลักสูตรนี้"
+                      />
+                      <b>🎓 {g.trainingName}</b>
+                      <span className="text-xs text-gray-500">
+                        {g.rows.length} คน{groupPending.length > 0 && ` · รอ HR ${groupPending.length}`}
+                      </span>
+                    </label>
+                  </td>
+                </tr>
+              ) : null;
+              return [header, ...g.rows.map((r, i) => {
               const st = r.status || "pending";
               const [label, cls] = STATUS[st] || STATUS.pending;
               return (
                 <tr
-                  key={r.itemId || i}
+                  key={r.itemId || `${g.trainingId}-${i}`}
                   onClick={(e) =>
                     st === "pending" && hasItemIds && !isInteractive(e) && toggle(r.itemId)
                   }
@@ -299,18 +360,12 @@ export default function BookingDetail({ type = "training" }) {
                       {r.clientName && ` · ${r.clientName}`}
                     </div>
                   </td>
-                  <td className={TD}>
-                    {isTraining ? (
-                      r.trainingName
-                    ) : (
-                      <>
-                        {r.checkType}
-                        {r.reason && (
-                          <div className="text-[11px] text-gray-500">{REASON[r.reason] || r.reason}</div>
-                        )}
-                      </>
-                    )}
-                  </td>
+                  {!isTraining && (
+                    <td className={TD}>
+                      {r.checkType}
+                      {r.reason && <div className="text-[11px] text-gray-500">{REASON[r.reason] || r.reason}</div>}
+                    </td>
+                  )}
                   <td className={TD}>
                     {st === "confirmed" ? (
                       <>
@@ -368,6 +423,7 @@ export default function BookingDetail({ type = "training" }) {
                   </td>
                 </tr>
               );
+              })].filter(Boolean);
             })}
           </tbody>
         </table>
