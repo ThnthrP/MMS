@@ -24,8 +24,9 @@ MMS is the internal system Experteam uses to manage its workforce across
 client contracts. It covers the full lifecycle: client manpower requirements,
 assigning names (requirement matching), PE approval for partially matched
 workers, availability checks on the Manpower Calendar, training and medical
-bookings, offshore mobilization/demobilization, and post-project review,
-plus ongoing training and medical compliance tracking for every worker.
+bookings, training plans (who attends which training round), offshore
+mobilization/demobilization, and post-project review, plus ongoing training
+and medical compliance tracking for every worker.
 
 **Clients:**
 
@@ -88,7 +89,8 @@ compliance by type.
 ![My Dashboard](screenshots/dashboard.png)
 
 #### 🛡️ Compliance Center
-Click a status count to filter; training alerts and medical status in separate columns.
+Click a status count to filter; training alerts and medical status in separate
+columns. The table scrolls under a fixed header.
 ![Compliance Center](screenshots/compliance-center.png)
 
 #### 📊 Analytics & Reports
@@ -110,7 +112,10 @@ search by position, project, location, or worker name (Thai / English).
 #### 👥 Assign Names
 Match workers against client requirements (% match) and shortlist candidates.
 The assigned list opens from the position header, with colored counts for
-Approved / awaiting approval / awaiting PE / rejected by PE.
+Approved / awaiting approval / awaiting PE / rejected by PE. A project
+progress bar (approved / needed, missing, awaiting approval or PE) turns into
+the "go to Mobilization" button only when every position is filled and
+approved.
 ![Assign Names](screenshots/allocation.png)
 
 #### 🔍 Gap Analysis
@@ -124,9 +129,9 @@ Workers below 100% match, grouped by project and position, approved or rejected 
 
 #### 📅 Manpower Calendar
 Projects with staffing progress and each worker's timeline, used to check
-availability. The list scrolls under a fixed header; each row has View, ✏️
-(edit on the Requirement page), and 🗑 for projects the signed-in admin
-created.
+availability. The list scrolls under a fixed header; each row has
+**Timeline** (detail page), **Requirement** (edit positions, headcount, dates),
+and 🗑 for projects the signed-in admin may delete.
 ![Manpower Calendar](screenshots/manpower-calendar.png)
 
 #### 🧭 Manpower Calendar › Requirement Detail
@@ -137,33 +142,67 @@ reviewers, and a history panel of who did what and when.
 ![Requirement Detail](screenshots/manpower-calendar-detail.png)
 
 #### 🎓 Training Bookings
-Training requests for workers with missing, expired, or expiring records, one
-row per worker. HR confirms or rejects each row, or many at once
-("เลือกทั้งหมดที่รอ"), and opens **✓ บันทึกผลอบรม** to record results.
+Training requests for workers with missing, expired, or expiring records. Two
+views: **one row per worker** (confirm / reject per row or many at once,
+"เลือกทั้งหมดที่รอ") and **one row per request** (course, headcount, status
+counts, "Confirm ทั้งคำขอ"). The chosen view is remembered per browser.
 ![Training Bookings](screenshots/training-bookings.png)
 
-#### 📘 Training Courses
+#### 📨 Booking Request Detail
+Opened from the notification bell or "เปิดคำขอ →": the course name and
+headcount in the header, every worker in the request, and bulk confirm.
+Requests with several courses are grouped by course, each with its own
+select-all.
+![Booking Request Detail](screenshots/booking-request-detail.png)
+
+#### 📘 Request Training
 Pick one course to see who has it, who is expiring, and who is missing it.
 Filter by name / ID, department, position, and certificate status, tick
 workers, then send a training request to HR. Selected workers stay listed in
 the side panel while searching.
-![Training Courses](screenshots/training-courses.png)
+![Request Training](screenshots/request-training.png)
 
-#### ✅ Bulk Add Certification
+#### 🩺 Medical Bookings
+Same layout and views as Training Bookings, for medical check-up requests.
+![Medical Bookings](screenshots/medical-bookings.png)
+
+#### 🏥 Request Medical
+Pick a check type (Medical Check up, Confined Space Entry, …) to see who is
+Unfit, overdue, expiring (Critical < 30 days / Due soon 30–90 / Upcoming
+90–120), valid, or has no record. Tick workers and open the request form with
+the check type and people filled in; each item carries its reason
+(overdue / due soon / no record). Workers with a pending request show
+"✓ แจ้งแล้ว" and cannot be picked again.
+![Request Medical](screenshots/request-medical.png)
+
+#### 🗓 Training Calendar
+Training rounds in progress, upcoming, and recently ended, with who attends
+each round. Filter by course, training center, or worker. Each round can add
+people, change dates / location for everyone, remove an attendee, or open
+**✓ บันทึกผลอบรม**. Rounds confirmed without dates use the requested dates and
+show a "วันที่ตามคำขอ" badge until HR sets them.
+![Training Calendar](screenshots/training-calendar.png)
+
+#### ➕ Add Training Plan
+Create a training round directly (course, dates, training center, workers)
+without a request. Workers already planned for the course are marked and can
+be hidden; overlapping rounds are skipped.
+![Add Training Plan](screenshots/training-plan-form.png)
+
+#### ✅ Bulk Add Certification (บันทึกผลอบรม)
 Record one training round for a whole group: course, shared issued / expiry
 dates, an optional certificate file, then pick the workers (search, department,
 position, hide workers who already hold the certificate). A side panel lists
 everyone selected, and a progress bar shows the save.
 ![Bulk Add Certification](screenshots/bulk-add-certification.png)
 
-#### 🩺 Medical Bookings
-Same layout as Training Bookings, for medical check-up requests.
-![Medical Bookings](screenshots/medical-bookings.png)
-
 #### 🚀 Mobilization
 Position chips show each position's assigned / deployed count (click to
-filter). A fill-all row sets From / Platform / MOB / D-MOB for every
-undeployed worker in view, next to the training-topics button.
+filter). One "กรอกให้ทุกคน" panel sets the team's travel details (Traveling
+Team No. = ON Number and Project filled in from the project, Field, Platform,
+outbound / return travel) and MOB / D-MOB (defaults from the requirement's
+start / end dates) for every undeployed worker, next to the training-topics
+button. These details are saved to each worker's deployment history (CV).
 ![Mobilization](screenshots/mobilization.png)
 
 #### ⭐ Post-Project Review
@@ -175,6 +214,12 @@ Worker list with search and filters by department, position, status, availabilit
 
 #### 🪪 Worker Detail
 ![Worker Detail](screenshots/worker-detail.png)
+
+#### ✏️ Edit Worker › Past Deployment History
+Deployments from before the system (or imported from HR's template): position
+at the time (saved as typed and shown in the CV), Traveling Team No.
+(ON Number), Project, Field, Platform, MOB / D-MOB, and travel / remarks.
+![Past Deployment History](screenshots/past-deployment-history.png)
 
 #### 💬 Project Detail & Discussion
 ON Number, position requests, employee timeline, and PE ↔ Manpower discussion
@@ -250,8 +295,8 @@ shown at the top of the page.
 | | Manpower Requirements | Requirements `/requirements` |
 | | Assign Names | Assign Names `/allocation` · PE Approvals `/pe-approvals` |
 | | Manpower Calendar | `/projects-overview` · detail `/projects-overview/:id` |
-| | Training Bookings | Bookings `/requests-history` · Training Courses `/certifications` |
-| | Medical Bookings | `/medical-bookings` |
+| | Bookings & Requests | Training Bookings `/requests-history` · Medical Bookings `/medical-bookings` · Request Training `/certifications` · Request Medical `/request-medical` · request detail `/training-requests/:id`, `/medical-requests/:id` |
+| | Training Plan | Training Calendar `/training-plan` · บันทึกผลอบรม `/certifications/bulk-add` · เพิ่มแผนอบรม `/training-plan/new` |
 | | Worker Schedule | Mobilization `/mobilization` · Post-Project Review `/review` |
 | | Worker Pool | Workers `/workers` |
 | **Settings** | Training Matrix | Training Matrix `/training-matrix` · Matrix Editor `/positions/matrix` · Trainings `/trainings` |
@@ -293,14 +338,18 @@ shown at the top of the page.
 - **Assign Names:** match workers against client requirements (% match),
   shortlist (Proposed → Approved) from an assigned-list dropdown with
   colored status counts, and export CV Summary / Roster
-  (MOB–D-MOB) / Skill Matrix (print & Excel) for client submission
+  (MOB–D-MOB) / Skill Matrix (print & Excel) for client submission. A
+  project progress bar shows approved / needed, missing headcount, and
+  workers awaiting approval or PE; "go to Mobilization" appears only when
+  every position is filled and approved (a secondary link allows partial
+  mobilization)
 - **PE Approvals:** workers below 100% match can be submitted with a reason;
   the Project Engineer approves or rejects each worker, grouped by
   project and position
 - **Manpower Calendar:** in-progress / upcoming / completed requirements with
   the current step and progress dots, used to check availability before
-  assigning names. Rows link to the detail page (View), the Requirement page
-  (✏️ edit), and, for the creator, project deletion (🗑, see
+  assigning names. Rows link to the detail page (Timeline), the Requirement
+  page (Requirement), and project deletion (🗑, see
   [Deleting a project](#deleting-a-project)). The detail page shows:
   - *Timeline (10 steps, following the ISO work procedure):* Requirement →
     Assign Names → Approval → Worker Confirm → Training & Medical → Pre-Field
@@ -314,39 +363,61 @@ shown at the top of the page.
     reviewers
   - *History:* entries from the Audit Log in plain language with the
     employee's name, filtered by team / documents / status & approvals
-- **Training Bookings / Medical Bookings:** training and medical check-up
-  requests for workers with missing, expired, or expiring records, one row per
-  worker; HR confirms / rejects per row or in bulk, with filters and CSV export
-  - *Training Courses:* one course across every worker with status counts;
+- **Bookings & Requests (Training & Medical):** requests to HR for training
+  and medical check-ups
+  - *Training Bookings / Medical Bookings:* one row per worker or one row per
+    request (toggle, remembered per browser); HR confirms / rejects per row,
+    per request, or in bulk, with filters and CSV export (always per worker).
+    The request detail page shows the course in the header and groups
+    multi-course requests by course
+  - *Request Training:* one course across every worker with status counts;
     tick workers and send a training request to HR (view and request only)
-  - *Bulk Add Certification:* record a finished training round for a group
-    (shared dates and certificate file). Opened from **✓ บันทึกผลอบรม** on
-    Training Bookings, or from a confirmed request with the workers
-    pre-selected
+  - *Request Medical:* one check type across every worker with status counts
+    (Unfit / Overdue / Critical / Due soon / Upcoming / Valid / No record);
+    tick workers and send a medical request with the check type and a reason
+    per worker. Medical status thresholds are shared with Compliance and
+    Assign Names (`frontend/src/utils/medicalStatus.js`)
+- **Training Plan:** what happens after HR confirms a training request
+  - *Training Calendar:* training rounds (course + dates + training center)
+    built from confirmed request items and plans, grouped as in progress /
+    upcoming / ended; falls back to the requested dates when HR confirmed
+    without dates. Add people, change dates for the round, remove attendees,
+    or record results
+  - *Add Training Plan:* create a confirmed round directly, skipping workers
+    who already have an overlapping round for the same course. Stored as a
+    confirmed `TrainingRequestBatch` (remarks start with `[Training Plan]`), so
+    no extra table is needed
+  - *Bulk Add Certification (บันทึกผลอบรม):* record a finished training round
+    for a group (shared dates and certificate file). Opened from the tab, from
+    a round in Training Calendar, from Training Bookings, or from a confirmed
+    request, with the workers pre-selected
 - **Worker Schedule:**
   - *Mobilization:* pre-mobilization checklist (alcohol test, drug test, PPE
     inspection, pre-field training, baggage inspection, blood pressure), then
-    deploy to site with D-MOB calculated from the MOB date; position chips
-    filter the list, and a fill-all row sets From / Platform / MOB / D-MOB
-    for every undeployed worker in view
+    deploy to site; position chips filter the list, and one fill-all panel
+    sets travel details (Traveling Team No. / Project from the project,
+    Field, Platform, outbound / return) and MOB / D-MOB (defaults from the
+    requirement dates) for every undeployed worker. Deployment details are
+    kept on the `Assignment` and appear in the worker's CV
   - *Post-Project Review:* per-worker rating and rehire recommendation, with
     review progress, reviewer name and date, row filter, and Save all
 - **Worker Pool:** worker profiles (Employee ID / internal code, position,
   department, passport & work permit, photo, CV/resume details, offshore
   roster data), Add / Edit Worker with tabbed form, and Worker Detail with
-  deployment history and document export
+  deployment history and document export. Past Deployment History stores the
+  position at the time as typed (`Assignment.positionLabel`, used in the CV
+  instead of the current position), Traveling Team No. (ON Number), Project,
+  Field, Platform, and travel / remarks
 - **Project Discussion:** PE ↔ Manpower message thread with file attachments
   on each project
 
 #### Deleting a project
 
-- Only a user whose **primary role is `admin`** can delete a project, and only
-  one **they created**. The creator is read from the Audit Log (the
-  `POST /api/projects` entry, or the first position added), because `Project`
-  has no creator column; projects created before the Audit Log existed cannot
-  be deleted from the UI
+- Only a user whose **primary role is `admin`** can delete a project (any
+  project). The backend decides who may delete; the frontend only hides the
+  🗑 button for everyone else
 - `GET /api/projects/deletable` returns the IDs the signed-in user may delete;
-  the 🗑 buttons on Manpower Calendar and Project Detail use it, and
+  the 🗑 buttons on Manpower Calendar and the Requirement page use it, and
   `DELETE /api/projects/:id` checks the same rule again (403 otherwise)
 - The user must type the ON Number to confirm. Deletion removes positions,
   shortlists, PE requests, bookings, checklists, assignments, reviews, and
@@ -388,6 +459,10 @@ shown at the top of the page.
     "New SSE" marker set Permanent Worker / SSE Level
   - Columns are found by header text, unchanged dates are skipped, blank
     cells never erase existing data, and files are processed in memory only
+  - *Deployment history* (HR template, run by the admin on the server):
+    `backend/scripts/importDeploymentHistory.js` (dry run unless `--apply`)
+    adds past deployments, fills blanks on existing roster rows, and skips
+    duplicates. Delete the Excel file from the server after importing
 - **Notifications:** in-app notification bell with links to related pages
 - **Email notifications (phase 1, off by default):** urgent events (worker
   declined a job, no response by the deadline, failed Check In, PE approval
@@ -407,14 +482,14 @@ shown at the top of the page.
 
 | Role | Description |
 |------|-------------|
-| `admin` | Full system access, Users & Roles, Audit Log, Data Import (primary role only); can delete projects they created |
+| `admin` | Full system access, Users & Roles, Audit Log, Data Import (primary role only); can delete projects |
 | `manpower_supply` | All operations and settings menus |
 | `hr_supervisor` | All operations and settings menus |
 | `personal_record_officer` | All operations and settings menus |
 | `hr_officer` | All operations and settings menus |
-| `training_officer` | All operations and settings menus |
+| `training_officer` | All operations and settings menus except Request Medical (cannot send medical requests) |
 | `project_engineer` | Projects, Assign Names, PE Approvals, Manpower Calendar, Mobilization, Post-Project Review |
-| `safety_manager` | Dashboard, Compliance, Projects, Assign Names, Worker Pool, Mobilization, Training Courses |
+| `safety_manager` | Dashboard, Compliance, Projects, Assign Names, Worker Pool, Mobilization, Request Training, Request Medical, Training Calendar (view) |
 | `safety_officer` | Dashboard, Mobilization safety checks |
 
 > A user can hold extra roles (for example `manpower_supply` +
@@ -435,7 +510,9 @@ Assign Names: search & match workers (% match vs client requirements)
 ↓
 Generate CV Summary / Roster / Skill Matrix → send to client
 ↓
-Missing / expiring items → Training Bookings / Medical Bookings
+Missing / expiring items → Bookings & Requests (Request Training / Request Medical)
+├─ HR confirms in Training Bookings / Medical Bookings
+└─ confirmed training → Training Plan (Training Calendar) → record results
 ↓
 Worker confirms the job in the Worker App
 ↓
@@ -461,7 +538,7 @@ MMS/
 │   │   │   ├── layout/            # Layout, Navbar, Sidebar, MenuTabs, sidebarMenu.js
 │   │   │   ├── worker-layout/     # Worker App layout
 │   │   │   ├── print/             # CV / Roster / Skill Matrix print components
-│   │   │   ├── SelectedPeoplePanel.jsx  # "selected workers" side panel (Bulk Add, Training Courses)
+│   │   │   ├── SelectedPeoplePanel.jsx  # "selected workers" side panel (Bulk Add, Request Training / Medical)
 │   │   │   └── ProtectedRoute.jsx
 │   │   ├── config/                # clientMode.js (single / multi-client mode)
 │   │   ├── context/               # AppContext, WorkerAppContext
@@ -470,8 +547,11 @@ MMS/
 │   │   │   ├── auth/              # Login, ResetPassword
 │   │   │   ├── dashboard/         # Dashboard
 │   │   │   ├── workers/           # Workers, AddWorker, EditWorker, WorkerDetail, BulkSetPin
-│   │   │   ├── compliance/        # ComplianceDashboard, Certifications, BulkAddCertification,
-│   │   │   │                      #   RequestsHistory, TrainingRequestDetail, MedicalRequestDetail
+│   │   │   ├── compliance/        # ComplianceDashboard, Certifications (Request Training),
+│   │   │   │                      #   RequestMedical, RequestBookingModal, BookingDecisionModal,
+│   │   │   │                      #   RequestsHistory (Training / Medical Bookings), BookingDetail
+│   │   │   │                      #   (+ TrainingRequestDetail / MedicalRequestDetail wrappers),
+│   │   │   │                      #   TrainingCalendar, TrainingPlanForm, BulkAddCertification
 │   │   │   ├── training/          # TrainingMatrix, ManageTrainings
 │   │   │   ├── positions/         # ManagePositions, ManageDivisions, MatrixEditor
 │   │   │   ├── projects/          # ManpowerRequirements, NewRequirementModal, Project,
@@ -482,12 +562,14 @@ MMS/
 │   │   │   ├── worker/            # Worker App pages (login, readiness, PIN change, ...)
 │   │   │   └── admin/             # AdminUsers, AuditLogs, DataImport
 │   │   ├── routes/                # AppRouter, WorkerAppRouter
+│   │   ├── utils/                 # workerSearch, medicalStatus (shared medical thresholds)
 │   │   └── App.jsx
 │   └── vite.config.js
 │
 ├── backend/
 │   ├── controllers/
 │   ├── services/                  # supervisorService = Manpower Calendar timeline + history
+│   │                              # trainingPlanService = Training Calendar / training plans
 │   │                              # notifyService, emailTemplates, emailWorker = email notifications
 │   ├── routes/
 │   ├── middleware/                # userAuth, workerAuth, auditTrail, serviceAuth (integration token)
@@ -498,6 +580,7 @@ MMS/
 │   │   └── seeds/
 │   ├── scripts/                   # data import / setup scripts; backfillRequestedBy.js
 │   │                              #   (one-off: fill "Requested by" from the Audit Log; dry run unless --apply)
+│   │                              # importDeploymentHistory.js (HR deployment-history template; dry run unless --apply)
 │   ├── uploads/                   # worker photos, certificates, attachments
 │   └── server.js
 │
