@@ -1,8 +1,9 @@
 import { useState, useEffect, useContext, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
-import { nameEN, nameTH } from "../../utils/workerSearch";
+import { buildWorkerOptions, filterWorkerOption, nameEN, nameTH } from "../../utils/workerSearch";
 
 // ══════════════════════════════════════════════════════════
 // Training Calendar (เมนู Training Plan › แท็บแรก)
@@ -24,6 +25,26 @@ const PERIOD = Object.fromEntries(PERIODS.map(([k, ...rest]) => [k, rest]));
 const LABEL = "mb-1 block text-[11px] font-semibold text-gray-500";
 const FIELD =
   "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] outline-none focus:border-blue-400";
+// react-select — โทนเดียวกับหน้า Workers · dropdown ลอยเหนือทุกอย่าง (render ที่ <body>)
+const SELECT_STYLES = {
+  control: (p) => ({
+    ...p,
+    borderColor: "#e5e7eb",
+    borderRadius: "8px",
+    minHeight: "36px",
+    fontSize: "13px",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (p) => ({ ...p, fontSize: "13px" }),
+  menuPortal: (p) => ({ ...p, zIndex: 50 }),
+};
+const MENU_PORTAL = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+  menuPosition: "fixed",
+};
+const NO_PROVIDER = "__none__"; // ตัวเลือก "ยังไม่ระบุสถานที่"
+
 const BTN_SOFT =
   "inline-flex cursor-pointer items-center whitespace-nowrap rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 no-underline hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -64,8 +85,10 @@ export default function TrainingCalendar() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [search, setSearch] = useState("");
-  const [trainingFilter, setTrainingFilter] = useState("");
+  // ตัวกรองแยก 3 ช่อง (เดิมเป็นช่องค้นหาเดียว) — ทุกช่องพิมพ์ค้นหาใน dropdown ได้
+  const [trainingFilter, setTrainingFilter] = useState(""); // training.id
+  const [providerFilter, setProviderFilter] = useState(""); // ชื่อสถานที่ / NO_PROVIDER
+  const [workerFilter, setWorkerFilter] = useState(""); // employee.id
   const [shown, setShown] = useState({ inProgress: true, upcoming: true, ended: false });
 
   const [editing, setEditing] = useState(null); // { session, start, end, provider }
@@ -98,37 +121,64 @@ export default function TrainingCalendar() {
     return c;
   }, [data.sessions]);
 
+  // ตัวเลือกมาจากรอบอบรมที่โหลดมาทั้งหมด (รวมรอบที่จบแล้ว) · วงเล็บ = จำนวนรอบ
   const trainingOptions = useMemo(() => {
     const m = new Map();
-    data.sessions.forEach((s) => s.training && m.set(s.training.id, s.training.name));
-    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    data.sessions.forEach((s) => {
+      if (!s.training) return;
+      const cur = m.get(s.training.id) || { name: s.training.name, n: 0 };
+      cur.n++;
+      m.set(s.training.id, cur);
+    });
+    return [...m.entries()]
+      .sort((a, b) => a[1].name.localeCompare(b[1].name))
+      .map(([id, { name, n }]) => ({ value: id, label: `${name} (${n} รอบ)` }));
   }, [data.sessions]);
 
-  const q = search.trim().toLowerCase();
-  const matchPerson = (a) =>
-    !!q &&
-    [nameEN(a.employee), nameTH(a.employee), a.employee?.empId, a.employee?.empCode].some((v) =>
-      String(v || "").toLowerCase().replace(/\s+/g, "").includes(q.replace(/\s+/g, "")),
-    );
+  const providerOptions = useMemo(() => {
+    const m = new Map();
+    let blank = 0;
+    data.sessions.forEach((s) => {
+      const p = (s.provider || "").trim();
+      if (!p) blank++;
+      else m.set(p, (m.get(p) || 0) + 1);
+    });
+    const opts = [...m.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([p, n]) => ({ value: p, label: `${p} (${n} รอบ)` }));
+    if (blank) opts.push({ value: NO_PROVIDER, label: `— ยังไม่ระบุสถานที่ (${blank} รอบ)` });
+    return opts;
+  }, [data.sessions]);
+
+  // พนักงานทุกคนที่อยู่ในรอบอบรม (ไม่ซ้ำ) — ค้นหาแบบเดียวกับหน้า Workers (ID / ชื่อไทย / อังกฤษ)
+  const workerOptions = useMemo(() => {
+    const m = new Map();
+    data.sessions.forEach((s) => s.attendees.forEach((a) => a.employee?.id && m.set(a.employee.id, a.employee)));
+    return buildWorkerOptions([...m.values()]);
+  }, [data.sessions]);
+
+  const matchPerson = (a) => !!workerFilter && a.employee?.id === workerFilter;
 
   const visible = data.sessions.filter((s) => {
     if (!shown[s.status]) return false;
     if (trainingFilter && s.training?.id !== trainingFilter) return false;
-    if (!q) return true;
-    return (
-      [s.training?.name, s.training?.fullName, s.provider].some((v) =>
-        String(v || "").toLowerCase().includes(q),
-      ) || s.attendees.some(matchPerson)
-    );
+    if (providerFilter) {
+      const p = (s.provider || "").trim();
+      if (providerFilter === NO_PROVIDER ? p : p !== providerFilter) return false;
+    }
+    if (workerFilter && !s.attendees.some(matchPerson)) return false;
+    return true;
   });
   const peopleShown = new Set(
     visible.flatMap((s) => s.attendees.map((a) => a.employee?.id)),
   ).size;
 
-  const hasFilter = search || trainingFilter || !shown.inProgress || !shown.upcoming || shown.ended;
+  const hasFilter =
+    trainingFilter || providerFilter || workerFilter || !shown.inProgress || !shown.upcoming || shown.ended;
   const clearFilters = () => {
-    setSearch("");
     setTrainingFilter("");
+    setProviderFilter("");
+    setWorkerFilter("");
     setShown({ inProgress: true, upcoming: true, ended: false });
   };
 
@@ -211,42 +261,60 @@ export default function TrainingCalendar() {
 
       {/* ════════ Filters ════════ */}
       <div className="space-y-3 border-y border-gray-200 py-3">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        {/* Training — เต็มแถว (ชื่อหลักสูตรยาว) */}
+        <div className="min-w-0">
+          <label className={`${LABEL} flex items-center justify-between`}>
+            <span>Training</span>
+            {hasFilter && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold text-[#dc3545] underline"
+              >
+                ✕ ล้างทั้งหมด
+              </button>
+            )}
+          </label>
+          <Select
+            options={trainingOptions}
+            value={trainingOptions.find((o) => o.value === trainingFilter) || null}
+            onChange={(o) => setTrainingFilter(o ? o.value : "")}
+            placeholder="ทุก training — พิมพ์เพื่อค้นหา..."
+            isClearable
+            styles={SELECT_STYLES}
+            {...MENU_PORTAL}
+            noOptionsMessage={() => "ไม่พบ training"}
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="min-w-0">
-            <label className={LABEL}>ค้นหา (training / สถานที่ / ชื่อพนักงาน / Employee ID)</label>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="🔍 เช่น BOSIET, Songkhla, ชื่อพนักงาน, 17561746"
-              className={FIELD}
+            <label className={LABEL}>ศูนย์อบรม / สถานที่</label>
+            <Select
+              options={providerOptions}
+              value={providerOptions.find((o) => o.value === providerFilter) || null}
+              onChange={(o) => setProviderFilter(o ? o.value : "")}
+              placeholder="ทุกสถานที่ — พิมพ์เพื่อค้นหา..."
+              isClearable
+              styles={SELECT_STYLES}
+              {...MENU_PORTAL}
+              noOptionsMessage={() => "ไม่พบสถานที่"}
             />
           </div>
           <div className="min-w-0">
-            <label className={`${LABEL} flex items-center justify-between`}>
-              <span>Training</span>
-              {hasFilter && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold text-[#dc3545] underline"
-                >
-                  ✕ ล้างทั้งหมด
-                </button>
-              )}
+            <label className={LABEL}>
+              Worker <span className="font-normal text-gray-400">(ID / ชื่อไทย / อังกฤษ)</span>
             </label>
-            <select
-              value={trainingFilter}
-              onChange={(e) => setTrainingFilter(e.target.value)}
-              className={FIELD}
-            >
-              <option value="">ทุก training</option>
-              {trainingOptions.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
+            <Select
+              options={workerOptions}
+              value={workerOptions.find((o) => o.value === workerFilter) || null}
+              onChange={(o) => setWorkerFilter(o ? o.value : "")}
+              filterOption={filterWorkerOption}
+              placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
+              isClearable
+              styles={SELECT_STYLES}
+              {...MENU_PORTAL}
+              noOptionsMessage={() => "ไม่พบพนักงานในรอบอบรม"}
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">

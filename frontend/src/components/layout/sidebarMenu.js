@@ -6,7 +6,7 @@
 // เมนูจัดตาม flow ISO / โปรแกรมตัวอย่างของลูกค้า แบ่ง section ตามช่วงของ flow:
 //   OVERVIEW      My Dashboard · Compliance · Reports
 //   OPERATIONS    Projects & Positions · Manpower Requirements · Assign Names ·
-//                 Manpower Calendar · Bookings · Training Plan ·
+//                 Manpower Calendar · Bookings & Requests · Training Plan ·
 //                 Worker Schedule · Worker Pool   (ISO 1–12)
 //   SETTINGS      Training Matrix · Departments
 //   ADMIN         Users & Roles · Audit Log · Data Import (admin เท่านั้น)
@@ -71,6 +71,16 @@ const R = {
   review: [...HR_CORE, "project_engineer"],
   requests: HR_CORE,
   certifications: [...HR_CORE, "safety_manager"],
+  // Request Medical = ข้อมูลหน้า Compliance ∩ role ที่ส่งคำขอ medical ได้ (medicalRequestRoutes REQUESTER_ROLES)
+  //   training_officer ไม่มีสิทธิ์ POST /api/medical-requests จึงไม่เห็นแท็บนี้
+  medicalRequest: [
+    "admin",
+    "manpower_supply",
+    "hr_supervisor",
+    "personal_record_officer",
+    "hr_officer",
+    "safety_manager",
+  ],
   settings: HR_CORE,
   admin: ["admin"],
 };
@@ -153,9 +163,9 @@ export const APP_MENU = [
           },
         ],
       },
-      // คำขอถึง HR: ขออบรม / ขอตรวจสุขภาพ — ติดตามสถานะ + ส่งคำขอใหม่
+      // คำขอถึง HR: ขออบรม / ขอตรวจสุขภาพ — ติดตามสถานะ + ส่งคำขอใหม่ (Trainings & Medical)
       {
-        name: "Bookings",
+        name: "Bookings & Requests",
         icon: ClipboardCheck,
         tabs: [
           {
@@ -172,6 +182,8 @@ export const APP_MENU = [
           },
           // เลือกหลักสูตร → ดูว่าใครมี / หมดอายุ / ยังไม่มี → ส่งคำขออบรม (เดิมแท็บ Training Courses)
           { name: "Request Training", path: "/certifications", roles: R.certifications },
+          // เลือกประเภทการตรวจ → ดูว่าใครหมด / ใกล้หมด / ยังไม่มีผลตรวจ → ส่งคำขอนัดตรวจ
+          { name: "Request Medical", path: "/request-medical", roles: R.medicalRequest },
         ],
       },
       // อบรมที่กำลังดำเนินอยู่ / กำลังจะเริ่ม → อบรมเสร็จ → บันทึกผล (cert) เข้าระบบ

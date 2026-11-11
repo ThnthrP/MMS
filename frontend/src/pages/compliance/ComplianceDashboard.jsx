@@ -1,8 +1,13 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useLayoutEffect, useContext, useRef } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import Select from "react-select";
 import { Link } from "react-router-dom";
+import {
+  MEDICAL_BUCKETS,
+  MEDICAL_REQUEST_WITHIN_DAYS,
+  expiryBucket,
+} from "../../utils/medicalStatus";
 import {
   buildWorkerOptions,
   filterWorkerOption,
@@ -117,8 +122,7 @@ const reqKey = (employeeId, trainingId) => `${employeeId}:${trainingId}`;
 // key ของคำขอตรวจสุขภาพ — ตรงกับ GET /api/medical-requests/pending-keys
 const MAIN_CHECK = "Medical Check up";
 const medKey = (employeeId, checkType) => `${employeeId}:${checkType || MAIN_CHECK}`;
-// แจ้ง HR เรื่อง medical ได้เมื่อหมดอายุแล้ว หรือเหลือไม่เกิน 120 วัน (Expired / Critical / Warning / Upcoming)
-const MEDICAL_REQUEST_WITHIN_DAYS = 120;
+// แจ้ง HR เรื่อง medical ได้เมื่อหมดอายุแล้ว หรือเหลือไม่เกิน 120 วัน — MEDICAL_REQUEST_WITHIN_DAYS (utils/medicalStatus.js)
 
 // ชื่อ client ของ worker สำหรับแนบในคำขอ (dashboard เก็บ key เป็นตัวเล็ก เช่น "chevron")
 const clientNameOf = (w) => {
@@ -149,7 +153,16 @@ const customSelectStyles = {
   }),
   option: (p) => ({ ...p, fontSize: "13px" }),
   placeholder: (p) => ({ ...p, fontSize: "13px", color: "#6c757d" }),
+  // dropdown ลอยเหนือหัวตารางที่ตรึงไว้
+  menuPortal: (p) => ({ ...p, zIndex: 50 }),
 };
+const MENU_PORTAL = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+  menuPosition: "fixed",
+};
+// หัวตารางตรึงไว้ตอนเลื่อน (ตารางเลื่อนในกรอบของตัวเอง — แบบหน้า Manpower Calendar)
+const STICKY_TH =
+  "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3.5 py-2 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
 
 // ══════════════════════════════════════════════════════════
 // helpers
@@ -218,13 +231,10 @@ const daysNote = (daysLeft) =>
 const fmtDate = (date) => new Date(date).toLocaleDateString("en-GB");
 
 // badge หลักของ Medical สื่อ "ใบด่วนแค่ไหน" มิติเดียว
+//   เกณฑ์กลางใช้ร่วมกับ Assign Names / Request Medical (utils/medicalStatus.js)
 const medicalExpiryInfo = (daysLeft, hasValidExp) => {
-  if (!hasValidExp) return ["gray", "No record"];
-  if (daysLeft < 0) return ["red", "Overdue"];
-  if (daysLeft < 30) return ["red", "Critical"];
-  if (daysLeft <= 90) return ["yellow", "Due soon"];
-  if (daysLeft <= 120) return ["indigo", "Upcoming"];
-  return ["green", "Valid"];
+  const b = MEDICAL_BUCKETS[hasValidExp ? expiryBucket(daysLeft) : "no_record"];
+  return [b.tone, b.label];
 };
 
 // ══════════════════════════════════════════════════════════
@@ -432,6 +442,10 @@ export default function ComplianceDashboard() {
   const [sendingMedKey, setSendingMedKey] = useState(null);
 
   const anyModalOpen = !!(selectedGap || selectedAlert || noteModal);
+
+  // กรอบตาราง = พื้นที่ที่เหลือของจอ (วัดจริง) → หัวคอลัมน์ค้างอยู่ด้านบนตอนเลื่อน
+  const tableBoxRef = useRef(null);
+  const [tableMaxH, setTableMaxH] = useState(null);
 
   // ล็อก scroll ของหน้าเมื่อเปิด modal ใดก็ได้ (เดิมล็อกเฉพาะ Gap modal)
   useEffect(() => {
@@ -651,20 +665,16 @@ export default function ComplianceDashboard() {
   const hasFilter =
     workerFilter || positionFilter || departmentFilter || statusFilter !== "all";
 
-  const workerOptions = [
-    { value: "", label: "All Workers" },
-    ...buildWorkerOptions(workers),
-  ];
+  // ไม่มีตัวเลือก "All …" — ไม่เลือก = ทั้งหมด (แสดงเป็น placeholder สีจาง แบบหน้า Workers)
+  const workerOptions = buildWorkerOptions(workers);
 
   const positionOptions = [
-    { value: "", label: "All Positions" },
     ...[...new Set(workers.map((w) => w.position?.name).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b))
       .map((p) => ({ value: p, label: p })),
   ];
 
   const departmentOptions = [
-    { value: "", label: "All Departments" },
     ...[...new Set(workers.map((w) => w.department).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b))
       .map((d) => ({ value: d, label: d })),
@@ -814,6 +824,18 @@ export default function ComplianceDashboard() {
     );
   };
 
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = tableBoxRef.current;
+      if (!el || el.offsetParent === null) return; // ซ่อนอยู่ (จอเล็กใช้การ์ด)
+      const top = el.getBoundingClientRect().top;
+      setTableMaxH(Math.max(360, Math.floor(window.innerHeight - top - 24)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [loading, hasFilter, filteredWorkers.length]);
+
   const emptyText = loading
     ? "Loading compliance data..."
     : "No workers match the current filters.";
@@ -959,6 +981,7 @@ export default function ComplianceDashboard() {
             placeholder="🔍 ค้นหาด้วย ID หรือชื่อ (ไทย/อังกฤษ)..."
             isClearable
             styles={customSelectStyles}
+            {...MENU_PORTAL}
             noOptionsMessage={() => "ไม่พบ worker"}
           />
         </div>
@@ -971,6 +994,7 @@ export default function ComplianceDashboard() {
             placeholder="All Positions"
             isClearable
             styles={customSelectStyles}
+            {...MENU_PORTAL}
             noOptionsMessage={() => "ไม่พบตำแหน่ง"}
           />
         </div>
@@ -983,6 +1007,7 @@ export default function ComplianceDashboard() {
             placeholder="All Departments"
             isClearable
             styles={customSelectStyles}
+            {...MENU_PORTAL}
             noOptionsMessage={() => "ไม่พบแผนก"}
           />
         </div>
@@ -1069,14 +1094,19 @@ export default function ComplianceDashboard() {
         </div>
 
         {/* ── lg+: ตาราง ── */}
-        <div className="hidden overflow-x-auto lg:block">
+        {/* ตารางเลื่อนในกรอบตัวเอง → หัวคอลัมน์ตรึงไว้ด้านบนตอนเลื่อน */}
+        <div
+          ref={tableBoxRef}
+          style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
+          className="hidden max-h-[calc(100vh-300px)] min-h-[360px] overflow-auto border-t border-gray-200 lg:block"
+        >
           <table className="w-full table-fixed border-collapse text-[13px]">
             <thead>
-              <tr className="border-y border-gray-200">
+              <tr>
                 {TABLE_HEADERS.map(([h, align, width]) => (
                   <th
                     key={h}
-                    className={`whitespace-nowrap bg-gray-50 px-3.5 py-2 text-[11px] font-semibold tracking-[0.5px] text-gray-500 ${align} ${width}`}
+                    className={`${STICKY_TH} ${align} ${width}`}
                   >
                     {h}
                   </th>

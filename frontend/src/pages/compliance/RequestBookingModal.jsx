@@ -6,6 +6,7 @@ import {
   buildWorkerOptions,
   filterWorkerOption,
 } from "../../utils/workerSearch";
+import { MAIN_CHECK, CONFINED_SPACE, medKey } from "../../utils/medicalStatus";
 
 // ══════════════════════════════════════════════════════════
 // การ์ดเดียวสำหรับขอจอง — แบบโปรแกรมตัวอย่าง
@@ -47,12 +48,23 @@ const fmtDM = (d) =>
   d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "?";
 
 // initialCourseId / initialEmployeeIds = เปิดจากหน้าอื่นแบบกรอกไว้ให้แล้ว (เช่น Training Courses)
+// Medical (จากหน้า Request Medical):
+//   initialCheckType  = ประเภทการตรวจที่เลือกไว้ · checkTypeOptions = ตัวเลือกประเภทการตรวจ
+//   initialReasons    = { employeeId: "overdue" | "due_soon" | "no_record" | "manual" } — ไม่ส่ง = "manual"
+//   initialClients    = { employeeId: clientName } — ใช้เมื่อไม่ได้เลือกบริษัทในฟอร์ม
+//   pendingKeys       = Set ของ "employeeId:checkType" ที่มีคำขอรอ HR อยู่แล้ว → แถวเทา
+// onSent(จำนวนคน, checkType, employeeIds)
 export default function RequestBookingModal({
   type = "training",
   onClose,
   onSent,
   initialCourseId,
   initialEmployeeIds,
+  initialCheckType,
+  checkTypeOptions,
+  initialReasons,
+  initialClients,
+  pendingKeys,
 }) {
   const { backendUrl } = useContext(AppContent);
   const isTraining = type === "training";
@@ -63,6 +75,10 @@ export default function RequestBookingModal({
 
   const [clientName, setClientName] = useState("");
   const [course, setCourse] = useState(null);
+  const [checkType, setCheckType] = useState(initialCheckType || MAIN_CHECK);
+  const checkTypes = [
+    ...new Set([MAIN_CHECK, CONFINED_SPACE, ...(checkTypeOptions || []), checkType].filter(Boolean)),
+  ];
   const [start, setStart] = useState(todayYMD());
   const [end, setEnd] = useState(todayYMD());
   const [provider, setProvider] = useState("");
@@ -141,7 +157,10 @@ export default function RequestBookingModal({
       clearTimeout(t);
     };
   }, [backendUrl, start, end, course, pickedKey, isTraining]);
+  // Training: คำขอหลักสูตรเดียวกันที่ค้าง (จาก availability) · Medical: pendingKeys ของประเภทการตรวจนี้
   const requestedSet = new Set(avail.requested || []);
+  if (!isTraining && pendingKeys)
+    picked.forEach((w) => pendingKeys.has(medKey(w.id, checkType)) && requestedSet.add(w.id));
 
   // Esc ปิด
   useEffect(() => {
@@ -200,8 +219,9 @@ export default function RequestBookingModal({
           {
             items: picked.map((w) => ({
               employeeId: w.id,
-              clientName: clientName || null,
-              reason: "manual",
+              checkType,
+              clientName: clientName || initialClients?.[w.id] || null,
+              reason: initialReasons?.[w.id] || "manual",
             })),
             requestedStart: start || null,
             requestedEnd: end || null,
@@ -211,7 +231,7 @@ export default function RequestBookingModal({
           { withCredentials: true },
         );
       }
-      onSent?.(picked.length);
+      onSent?.(picked.length, isTraining ? undefined : checkType, picked.map((w) => w.id));
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.message || "ส่งคำขอไม่สำเร็จ");
@@ -285,7 +305,17 @@ export default function RequestBookingModal({
             ) : (
               <div>
                 <label className={LABEL}>ประเภทการตรวจ</label>
-                <input className={`${INPUT} bg-gray-50`} value="Medical Check up" readOnly />
+                <select
+                  value={checkType}
+                  onChange={(e) => setCheckType(e.target.value)}
+                  className={INPUT}
+                >
+                  {checkTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -414,7 +444,9 @@ export default function RequestBookingModal({
                       ))}
                       {already && (
                         <span className="block text-[11px] text-gray-500">
-                          มีคำขอ / นัดอบรมหลักสูตรนี้อยู่แล้ว
+                          {isTraining
+                            ? "มีคำขอ / นัดอบรมหลักสูตรนี้อยู่แล้ว"
+                            : `มีคำขอ ${checkType} รอ HR อยู่แล้ว`}
                         </span>
                       )}
                     </span>
@@ -433,7 +465,8 @@ export default function RequestBookingModal({
             </div>
             <div className="mt-1 text-[11px] text-gray-400">
               <span className="text-[#c2410c]">ส้ม</span> = มีงานช่วงวันที่นี้ (ยังส่งคำขอได้ แค่แจ้งให้รู้) ·{" "}
-              <span className="text-gray-500">เทา</span> = มีคำขอ / นัดหลักสูตรนี้อยู่แล้ว
+              <span className="text-gray-500">เทา</span> ={" "}
+              {isTraining ? "มีคำขอ / นัดหลักสูตรนี้อยู่แล้ว" : "มีคำขอตรวจประเภทนี้รอ HR อยู่แล้ว"}
             </div>
             {picked.length > 1 && (
               <button

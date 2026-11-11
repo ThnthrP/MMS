@@ -39,6 +39,7 @@ import Certifications from "../pages/compliance/Certifications";
 import TrainingRequestDetail from "../pages/compliance/TrainingRequestDetail";
 import RequestsHistory from "../pages/compliance/RequestsHistory";
 import MedicalRequestDetail from "../pages/compliance/MedicalRequestDetail";
+import RequestMedical from "../pages/compliance/RequestMedical";
 
 import ProjectsOverview from "../pages/projects/ProjectsOverview";
 import ProjectCalendarDetail from "../pages/projects/ProjectCalendarDetail";
@@ -299,6 +300,24 @@ const AppRouter = () => {
             element={
               <ProtectedRoute allowRoles={REQUESTS_ROLES}>
                 <RequestsHistory type="medical" />
+              </ProtectedRoute>
+            }
+          />
+          {/* Request Medical — เลือกประเภทการตรวจ → ส่งคำขอนัดตรวจ (sync กับ R.medicalRequest ใน sidebarMenu.js) */}
+          <Route
+            path="/request-medical"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "safety_manager",
+                ]}
+              >
+                <RequestMedical />
               </ProtectedRoute>
             }
           />

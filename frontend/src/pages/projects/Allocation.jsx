@@ -3,6 +3,7 @@ import axios from "axios";
 import Select from "react-select";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
+import { MEDICAL_BUCKETS, expiryBucket, requestReason } from "../../utils/medicalStatus";
 import useStickyState from "../../hooks/useStickyState";
 import {
   buildWorkerOptions,
@@ -593,13 +594,12 @@ function MedicalCell({ expiry, status, canRequest, inCart, onToggleRequest }) {
     );
   }
 
+  // เกณฑ์เดียวกับ Compliance / Request Medical (utils/medicalStatus.js)
+  //   เดิม: Due soon ≤ 30 วัน และแจ้ง HR ได้เฉพาะ ≤ 30 วัน — ไม่ตรงกับหน้า Compliance (≤ 90 / แจ้งได้ ≤ 120)
   const days = daysUntil(expiry);
-  const [label, tone] =
-    days < 0
-      ? ["Overdue", "red"]
-      : days <= 30
-        ? ["Due soon", "yellow"]
-        : ["Valid", "green"];
+  const bucket = expiryBucket(days);
+  const { label } = MEDICAL_BUCKETS[bucket];
+  const tone = { indigo: "blue" }[MEDICAL_BUCKETS[bucket].tone] || MEDICAL_BUCKETS[bucket].tone;
   const statusText = MEDICAL_STATUS_LABEL[status] || null;
 
   return (
@@ -614,7 +614,7 @@ function MedicalCell({ expiry, status, canRequest, inCart, onToggleRequest }) {
         <span className="text-[10px] text-gray-500">
           Exp {fmtShort(expiry)}
         </span>
-        {days <= 30 && requestLink(days < 0 ? "overdue" : "due_soon")}
+        {bucket !== "valid" && requestLink(requestReason(bucket))}
       </div>
     </td>
   );
