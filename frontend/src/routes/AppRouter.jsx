@@ -44,6 +44,8 @@ import ProjectsOverview from "../pages/projects/ProjectsOverview";
 import ProjectCalendarDetail from "../pages/projects/ProjectCalendarDetail";
 
 import BulkAddCertification from "../pages/compliance/BulkAddCertification";
+import TrainingCalendar from "../pages/compliance/TrainingCalendar";
+import TrainingPlanForm from "../pages/compliance/TrainingPlanForm";
 
 import BulkSetPin from "../pages/workers/BulkSetPin";
 
@@ -248,6 +250,34 @@ const AppRouter = () => {
                 ]}
               >
                 <BulkAddCertification />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Training Plan — อบรมที่กำลังดำเนินอยู่ / กำลังจะเริ่ม (ดู: + safety_manager · เพิ่มแผน: HR) */}
+          <Route
+            path="/training-plan"
+            element={
+              <ProtectedRoute
+                allowRoles={[
+                  "admin",
+                  "manpower_supply",
+                  "hr_supervisor",
+                  "personal_record_officer",
+                  "hr_officer",
+                  "safety_manager",
+                  "training_officer",
+                ]}
+              >
+                <TrainingCalendar />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/training-plan/new"
+            element={
+              <ProtectedRoute allowRoles={REQUESTS_ROLES}>
+                <TrainingPlanForm />
               </ProtectedRoute>
             }
           />

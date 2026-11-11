@@ -316,10 +316,11 @@ export default function Certifications() {
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
       <div className="pb-3">
-        <h1 className="m-0 text-lg font-bold">Training Courses</h1>
+        <h1 className="m-0 text-lg font-bold">Request Training</h1>
         <div className="text-xs text-gray-500">
           เลือกหลักสูตร เพื่อดูว่าใครมี / หมดอายุ / ยังไม่มี — ติ๊กพนักงานแล้วกด
-          "แจ้ง HR ให้จัด Training" (บันทึกผลอบรมทีละกลุ่มอยู่ที่หน้า Bookings)
+          "แจ้ง HR ให้จัด Training" · ติดตามคำขอที่แท็บ Training Bookings · รอบอบรมและบันทึกผลอยู่ที่เมนู
+          Training Plan
         </div>
       </div>
 

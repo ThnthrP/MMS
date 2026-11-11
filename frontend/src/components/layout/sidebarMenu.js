@@ -6,7 +6,7 @@
 // เมนูจัดตาม flow ISO / โปรแกรมตัวอย่างของลูกค้า แบ่ง section ตามช่วงของ flow:
 //   OVERVIEW      My Dashboard · Compliance · Reports
 //   OPERATIONS    Projects & Positions · Manpower Requirements · Assign Names ·
-//                 Manpower Calendar · Training Bookings · Medical Bookings ·
+//                 Manpower Calendar · Bookings · Training Plan ·
 //                 Worker Schedule · Worker Pool   (ISO 1–12)
 //   SETTINGS      Training Matrix · Departments
 //   ADMIN         Users & Roles · Audit Log · Data Import (admin เท่านั้น)
@@ -32,7 +32,7 @@ import {
   ClipboardList,
   UserPlus,
   GraduationCap,
-  Stethoscope,
+  ClipboardCheck,
   Ship,
   Users,
   Settings2,
@@ -153,35 +153,35 @@ export const APP_MENU = [
           },
         ],
       },
+      // คำขอถึง HR: ขออบรม / ขอตรวจสุขภาพ — ติดตามสถานะ + ส่งคำขอใหม่
       {
-        name: "Training Bookings",
-        icon: GraduationCap,
+        name: "Bookings",
+        icon: ClipboardCheck,
         tabs: [
           {
-            name: "Bookings",
+            name: "Training Bookings",
             path: "/requests-history",
             roles: R.requests,
             prefixes: ["/training-requests/"],
           },
-          {
-            name: "Training Courses",
-            path: "/certifications",
-            roles: R.certifications,
-            prefixes: ["/certifications/"],
-          },
-        ],
-      },
-      // Medical แยกเมนูจาก Training (โปรแกรมตัวอย่างไม่มี Medical — คนละ flow คนละคนดูแล)
-      {
-        name: "Medical Bookings",
-        icon: Stethoscope,
-        tabs: [
           {
             name: "Medical Bookings",
             path: "/medical-bookings",
             roles: R.requests,
             prefixes: ["/medical-requests/"],
           },
+          // เลือกหลักสูตร → ดูว่าใครมี / หมดอายุ / ยังไม่มี → ส่งคำขออบรม (เดิมแท็บ Training Courses)
+          { name: "Request Training", path: "/certifications", roles: R.certifications },
+        ],
+      },
+      // อบรมที่กำลังดำเนินอยู่ / กำลังจะเริ่ม → อบรมเสร็จ → บันทึกผล (cert) เข้าระบบ
+      {
+        name: "Training Plan",
+        icon: GraduationCap,
+        tabs: [
+          { name: "Training Calendar", path: "/training-plan", roles: R.certifications },
+          { name: "บันทึกผลอบรม", path: "/certifications/bulk-add", roles: R.requests },
+          { name: "เพิ่มแผนอบรม", path: "/training-plan/new", roles: R.requests },
         ],
       },
       {

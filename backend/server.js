@@ -31,6 +31,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 
 import trainingRequestRoutes from "./routes/trainingRequestRoutes.js";
 import medicalRequestRoutes from "./routes/medicalRequestRoutes.js";
+import trainingPlanRoutes from "./routes/trainingPlanRoutes.js"; // Training Calendar / เพิ่มแผนอบรม
 
 import supervisorRoutes from "./routes/supervisorRoutes.js";
 
@@ -134,6 +135,8 @@ app.use("/api/notifications", notificationRoutes);
 
 app.use("/api/training-requests", trainingRequestRoutes);
 app.use("/api/medical-requests", medicalRequestRoutes);
+// ต้องอยู่ก่อน app.use("/api", clientTrainingRoutes) ด้านล่าง (route นั้นครอบทุก /api/*)
+app.use("/api/training-plan", trainingPlanRoutes);
 
 app.use("/api/supervisor", supervisorRoutes);
 
