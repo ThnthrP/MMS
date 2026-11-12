@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import { MEDICAL_BUCKETS, expiryBucket, requestReason } from "../../utils/medicalStatus";
 import useStickyState from "../../hooks/useStickyState";
+import TrainingPlanNotice, { useEmployeeTrainingPlan, findPlan, PlanTag } from "../../components/TrainingPlanNotice";
 import {
   buildWorkerOptions,
   filterWorkerOption,
@@ -845,6 +846,8 @@ export default function Allocation() {
 
   // ── Modals ──
   const [eligibilityModal, setEligibilityModal] = useState(null);
+  // แผนอบรมของคนที่เปิด Client Requirement Check อยู่ (Training Plan: กำลังอบรม / กำลังจะเริ่ม)
+  const eligibilityPlan = useEmployeeTrainingPlan(eligibilityModal?.employeeId);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
   const [activeClientTab, setActiveClientTab] = useState(0);
   const [healthNoteModal, setHealthNoteModal] = useState(null);
@@ -3130,6 +3133,12 @@ export default function Allocation() {
           )}
 
           <div className="flex-1 overflow-y-auto px-4 py-3.5 sm:px-6">
+            {/* แผนอบรมที่มีอยู่แล้ว — ดูก่อนตัดสินใจขอ training เพิ่ม */}
+            <TrainingPlanNotice
+              plans={eligibilityPlan.plans}
+              loading={eligibilityPlan.loading}
+              className="mb-3"
+            />
             {eligibilityModal.clients.length === 0 ? (
               <div className="p-5 text-center text-gray-500">
                 No training matrix found for this position
@@ -3240,6 +3249,12 @@ export default function Allocation() {
                                   }`}
                                 >
                                   {inCart ? "☑" : "✕"} {item.name}
+                                  <PlanTag
+                                    plan={findPlan(eligibilityPlan.plans, {
+                                      trainingId: item.trainingId,
+                                      name: item.name,
+                                    })}
+                                  />
                                 </button>
                               );
                             })}

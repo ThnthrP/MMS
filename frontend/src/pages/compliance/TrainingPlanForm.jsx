@@ -4,6 +4,7 @@ import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import SelectedPeoplePanel from "../../components/SelectedPeoplePanel";
+import { invalidateTrainingPlanCache } from "../../components/TrainingPlanNotice";
 import { nameEN, nameTH } from "../../utils/workerSearch";
 
 // ══════════════════════════════════════════════════════════
@@ -211,6 +212,7 @@ export default function TrainingPlanForm() {
         { withCredentials: true },
       );
       const { created, skippedEmployeeIds = [] } = res.data;
+      invalidateTrainingPlanCache(); // ป้าย 🗓 ใน Assign Names / Compliance เห็นแผนใหม่ทันที
       if (skippedEmployeeIds.length === 0) {
         navigate("/training-plan");
         return;

@@ -14,6 +14,7 @@ import {
   nameEN,
   nameTH,
 } from "../../utils/workerSearch";
+import TrainingPlanNotice, { useEmployeeTrainingPlan, findPlan, PlanTag } from "../../components/TrainingPlanNotice";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -318,7 +319,8 @@ function GapGroupHeader({ dot, title, required, completed, missing }) {
   );
 }
 
-function TagList({ items, cls, prefix }) {
+// extra(t) = ของต่อท้ายแต่ละป้าย (เช่น ป้ายแผนอบรม 🗓)
+function TagList({ items, cls, prefix, extra }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((t) => (
@@ -327,13 +329,15 @@ function TagList({ items, cls, prefix }) {
           className={`rounded-md border px-2 py-0.5 text-xs ${cls}`}
         >
           {prefix} {t}
+          {extra?.(t)}
         </span>
       ))}
     </div>
   );
 }
 
-function GapTrainingTags({ missing, completed }) {
+// plans = แผนอบรมของพนักงานคนนี้ → training ที่ขาดแต่มีรอบอบรมแล้ว ขึ้นป้าย 🗓
+function GapTrainingTags({ missing, completed, plans }) {
   return (
     <>
       {missing.length > 0 && (
@@ -345,6 +349,7 @@ function GapTrainingTags({ missing, completed }) {
             items={missing}
             prefix="✕"
             cls="border-[#f5c6cb] bg-[#fff5f5] text-[#dc3545]"
+            extra={(name) => <PlanTag plan={findPlan(plans, { name })} />}
           />
         </div>
       )}
@@ -442,6 +447,8 @@ export default function ComplianceDashboard() {
   const [sendingMedKey, setSendingMedKey] = useState(null);
 
   const anyModalOpen = !!(selectedGap || selectedAlert || noteModal);
+  // แผนอบรมของคนที่เปิด Gap Analysis / Training Alerts อยู่ (Training Plan: กำลังอบรม / กำลังจะเริ่ม)
+  const empPlan = useEmployeeTrainingPlan(selectedAlert?.workerId || selectedGap?.workerId);
 
   // กรอบตาราง = พื้นที่ที่เหลือของจอ (วัดจริง) → หัวคอลัมน์ค้างอยู่ด้านบนตอนเลื่อน
   const tableBoxRef = useRef(null);
@@ -521,7 +528,7 @@ export default function ComplianceDashboard() {
         `${backendUrl}/api/compliance/worker/${workerId}/gaps`,
         { withCredentials: true },
       );
-      setSelectedGap(res.data);
+      setSelectedGap({ ...res.data, workerId });
     } catch (error) {
       console.error(error);
     }
@@ -1204,6 +1211,7 @@ export default function ComplianceDashboard() {
             headerRight={single ? scorePill(clientEntries[0][1]) : null}
             onClose={() => setSelectedGap(null)}
           >
+            <TrainingPlanNotice plans={empPlan.plans} loading={empPlan.loading} className="mb-3" />
             {clientEntries.map(([clientName, client]) => {
               const mandatory = client.mandatory ?? EMPTY_GROUP;
               const assigned = client.assigned ?? EMPTY_GROUP;
@@ -1237,6 +1245,7 @@ export default function ComplianceDashboard() {
                     <GapTrainingTags
                       missing={mandatory.missing}
                       completed={mandatory.completed}
+                      plans={empPlan.plans}
                     />
                   </div>
 
@@ -1262,6 +1271,7 @@ export default function ComplianceDashboard() {
                         <GapTrainingTags
                           missing={assigned.missing}
                           completed={assigned.completed}
+                          plans={empPlan.plans}
                         />
                       </>
                     )}
@@ -1326,6 +1336,7 @@ export default function ComplianceDashboard() {
           }
           onClose={() => setSelectedAlert(null)}
         >
+          <TrainingPlanNotice plans={empPlan.plans} loading={empPlan.loading} className="mb-4" />
           {/* แจ้ง HR ทั้งหมดในครั้งเดียว — เฉพาะ training ที่ยังไม่ได้แจ้ง */}
           {pendingRequestable.length > 1 && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5">
@@ -1361,6 +1372,14 @@ export default function ComplianceDashboard() {
                       </span>
                       <span className="break-words text-[13px]">
                         {item.name}
+                        {item.type === "Training" && (
+                          <PlanTag
+                            plan={findPlan(empPlan.plans, {
+                              trainingId: item.globalTrainingId,
+                              name: item.name,
+                            })}
+                          />
+                        )}
                       </span>
                     </div>
                     <div className="flex items-center gap-2.5">

@@ -4,6 +4,7 @@ import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import { buildWorkerOptions, filterWorkerOption, nameEN, nameTH } from "../../utils/workerSearch";
+import { invalidateTrainingPlanCache } from "../../components/TrainingPlanNotice";
 
 // ══════════════════════════════════════════════════════════
 // Training Calendar (เมนู Training Plan › แท็บแรก)
@@ -196,6 +197,7 @@ export default function TrainingCalendar() {
         {},
         { withCredentials: true },
       );
+      invalidateTrainingPlanCache();
       load();
     } catch (err) {
       alert(err.response?.data?.message || "ยกเลิกไม่สำเร็จ");
@@ -218,6 +220,7 @@ export default function TrainingCalendar() {
         { withCredentials: true },
       );
       setEditing(null);
+      invalidateTrainingPlanCache();
       load();
     } catch (err) {
       alert(err.response?.data?.message || "บันทึกไม่สำเร็จ");
