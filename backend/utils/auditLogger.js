@@ -184,23 +184,41 @@ async function lookupEmployee(employeeId) {
   return data;
 }
 
-// ถอด JWT จาก cookie — ใช้กรณี req.user ไม่ถูกตั้ง (เช่น route logout ที่ไม่ผ่าน userAuth)
-// + ถอดจาก Set-Cookie ของ response (กรณี login สำเร็จ — token เพิ่งถูกสร้าง ยังไม่มีใน req.cookies)
-function actorFromCookies(req, res) {
+// ── cookie ของแต่ละช่องทาง (ต้องตรงกับ authController / workerAuthController) ──
+//   MMS หลังบ้าน = "token"       payload { userId }
+//   Worker App   = "workerToken" payload { employeeId, type: "worker" }
+const CHANNEL_COOKIE = { user: "token", worker: "workerToken" };
+
+// path ของ Worker App ทั้งหมดอยู่ใต้ /api/worker/ (ไม่ใช่ /api/workers ของหลังบ้าน)
+export const channelFromPath = (path = "") =>
+  /^\/api\/worker(\/|$)/.test(path) ? "worker" : "user";
+
+// ถอด JWT จาก cookie — ใช้กรณี req.user / req.employeeId ไม่ถูกตั้ง (route login / logout ไม่ผ่าน userAuth)
+//   • ดูเฉพาะ cookie ของช่องทางนั้น — เบราว์เซอร์เดียวกันอาจมีทั้ง token และ workerToken
+//     (เดิมดูทุก cookie แล้วเจอ workerToken ก่อน → login/logout ของ MMS ถูกลงชื่อเป็นพนักงาน)
+//   • responseOnly (ใช้กับ login) = ดูเฉพาะ Set-Cookie ที่เพิ่งออก — login ไม่สำเร็จจะไม่มี
+//     จึงเป็น anonymous ไม่ใช่คนที่ยังล็อกอินค้างอยู่ในเบราว์เซอร์นั้น
+function actorFromCookies(req, res, { channel = "user", responseOnly = false } = {}) {
   const secret = process.env.JWT_SECRET;
-  if (!secret) return {};
-  const pairs = Object.entries(req.cookies || {});
+  const want = CHANNEL_COOKIE[channel];
+  if (!secret || !want) return {};
+
+  const pairs = [];
   const setCookie = res?.getHeader?.("set-cookie");
   for (const c of [].concat(setCookie || [])) {
     const m = String(c).match(/^([^=]+)=([^;]*)/);
-    if (m && m[2]) pairs.unshift([m[1], decodeURIComponent(m[2])]);
+    if (m && m[2]) pairs.push([m[1].trim(), decodeURIComponent(m[2])]);
   }
+  if (!responseOnly) pairs.push(...Object.entries(req.cookies || {}));
+
   for (const [name, raw] of pairs) {
+    if (name !== want) continue;
     if (!raw || typeof raw !== "string" || raw.split(".").length !== 3) continue;
     try {
       const p = jwt.verify(raw, secret);
-      if (p?.type === "worker" && p.employeeId) return { employeeId: p.employeeId };
-      if (p?.id && name !== "workerToken") return { userId: p.id };
+      if (channel === "worker" && p?.type === "worker" && p.employeeId) return { employeeId: p.employeeId };
+      // token ของ MMS ใช้ userId (เดิมเช็ก p.id ซึ่งไม่มีใน payload → ไม่เคยจับได้)
+      if (channel === "user" && p?.type !== "worker" && (p?.userId || p?.id)) return { userId: p.userId || p.id };
     } catch {
       /* token หมดอายุ/ไม่ใช่ของเรา — ข้าม */
     }
@@ -209,12 +227,19 @@ function actorFromCookies(req, res) {
 }
 
 // ── ระบุตัวผู้กระทำ ──
-export async function resolveActor(req, res) {
+//   action = action ของ request นี้ (ส่งมาจาก auditTrail) — ใช้แยกกรณี login
+export async function resolveActor(req, res, { action } = {}) {
+  const path = (req.originalUrl || req.url || "").split("?")[0];
+  const channel = channelFromPath(path);
+
+  // ตัวตนที่ userAuth / workerAuth ตั้งไว้ = เชื่อถือได้เสมอ
   let userId = req.user?.id || null;
   let employeeId = req.employeeId || req.employee?.id || null;
 
+  // ไม่มี (route login / logout) → ถอดจาก cookie ของช่องทางตาม path เท่านั้น
   if (!userId && !employeeId) {
-    const fromCookie = actorFromCookies(req, res);
+    const isLogin = action === "LOGIN" || action === "LOGIN_FAILED";
+    const fromCookie = actorFromCookies(req, res, { channel, responseOnly: isLogin });
     userId = fromCookie.userId || null;
     employeeId = fromCookie.employeeId || null;
   }

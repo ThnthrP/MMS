@@ -266,6 +266,10 @@ model User {
   resetOtp         String?
   resetOtpExpireAt DateTime?
 
+  // กันเดารหัสผ่าน — ผิดครบ 5 ครั้งล็อก 15 นาที (authController.login)
+  failedLoginAttempts Int       @default(0)
+  loginLockedUntil    DateTime?
+
   bansIssued EmployeeBan[] @relation("BansIssued")
   bansLifted EmployeeBan[] @relation("BansLifted")
 

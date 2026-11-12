@@ -107,7 +107,8 @@ export default function auditTrail(req, res, next) {
       let action = ctx.action || actionFrom(method, path);
       if (action === "LOGIN" && !success) action = "LOGIN_FAILED";
 
-      const actor = await resolveActor(req, res);
+      // ส่ง action ไปด้วย — login ใช้ได้เฉพาะ token ที่เพิ่งออก ไม่ใช่ cookie ที่ค้างอยู่ในเบราว์เซอร์
+      const actor = await resolveActor(req, res, { action });
 
       // request ที่ไม่มีใครล็อกอิน + ไม่ใช่ความพยายาม login → ข้าม (เช่น 401 จาก bot)
       if (actor.actorType === "anonymous" && action !== "LOGIN_FAILED" && action !== "LOGIN") return;
