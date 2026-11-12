@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
+import { notifyRoles } from "../services/notificationService.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -16,9 +17,24 @@ const workerCookieOptions = {
 
 // ================= helpers =================
 
+// พนักงานถูกล็อก → แจ้ง admin + manpower ในกระดิ่ง (พนักงานจะโทรหาทีมนี้ตามข้อความหน้า login)
+//   ห้ามทำให้ login พัง — ยิงแล้วไม่รอ
+function notifyWorkerLocked(employee) {
+  if (!employee) return;
+  const who = [employee.empId, employee.fullNameEN || employee.fullName].filter(Boolean).join(" ");
+  notifyRoles(["admin", "manpower_supply"], {
+    type: "security",
+    title: "🔒 พนักงานถูกล็อก Worker App",
+    message: `${who || "พนักงาน"} กรอก PIN ผิด ${MAX_FAILED_ATTEMPTS} ครั้ง · ล็อก 15 นาที · ถ้าพนักงานลืม PIN ให้ตั้ง PIN ใหม่ที่ Bulk Set PIN`,
+    link: employee.id ? `/workers/${employee.id}` : null,
+  }).catch((err) => console.error("[worker-auth] notify:", err.message));
+}
+
 // นับครั้งที่กรอก PIN ผิด — ครบ MAX_FAILED_ATTEMPTS ล็อก 15 นาที
 // ใช้ร่วมกันทั้งตอน login และตอนกรอก PIN เดิมเพื่อเปลี่ยน PIN (กันเดา PIN ผ่านหน้าเปลี่ยน PIN)
-async function registerFailedAttempt(pinRow) {
+//   Worker App บอกจำนวนครั้งที่เหลือได้ — ระบบบอก "ไม่พบรหัสพนักงานนี้" อยู่แล้ว จึงไม่มีความลับให้ปิด
+//   คืน { locked, message } — message ใช้แทนข้อความ "PIN ไม่ถูกต้อง" เดิม
+async function registerFailedAttempt(pinRow, employee, wrongLabel = "PIN ไม่ถูกต้อง") {
   const newFailedAttempts = pinRow.failedAttempts + 1;
   const shouldLock = newFailedAttempts >= MAX_FAILED_ATTEMPTS;
 
@@ -30,9 +46,18 @@ async function registerFailedAttempt(pinRow) {
     },
   });
 
-  return shouldLock
-    ? "กรอก PIN ผิดหลายครั้งเกินไป บัญชีถูกล็อกชั่วคราว 15 นาที"
-    : null;
+  if (shouldLock) {
+    notifyWorkerLocked(employee);
+    return {
+      locked: true,
+      message: `กรอก PIN ผิดครบ ${MAX_FAILED_ATTEMPTS} ครั้ง บัญชีถูกล็อกชั่วคราว 15 นาที — ถ้าลืม PIN ติดต่อทีม Manpower / HR`,
+    };
+  }
+  const left = MAX_FAILED_ATTEMPTS - newFailedAttempts;
+  return {
+    locked: false,
+    message: `${wrongLabel} (เหลืออีก ${left} ครั้ง ก่อนถูกล็อก 15 นาที)`,
+  };
 }
 
 function lockedMessage(pinRow) {
@@ -128,8 +153,8 @@ export const workerLogin = async (req, res) => {
     const isMatch = await bcrypt.compare(String(pin), employee.pin.pinHash);
 
     if (!isMatch) {
-      const lockMsg = await registerFailedAttempt(employee.pin);
-      return res.json({ success: false, message: lockMsg || "PIN ไม่ถูกต้อง" });
+      const fail = await registerFailedAttempt(employee.pin, employee);
+      return res.json({ success: false, message: fail.message });
     }
 
     // ล็อกอินสำเร็จ — reset failed attempts
@@ -199,11 +224,8 @@ export const changePin = async (req, res) => {
 
     const isMatch = await bcrypt.compare(String(currentPin), pinRow.pinHash);
     if (!isMatch) {
-      const lockMsg = await registerFailedAttempt(pinRow);
-      return res.json({
-        success: false,
-        message: lockMsg || "PIN เดิมไม่ถูกต้อง",
-      });
+      const fail = await registerFailedAttempt(pinRow, req.employee, "PIN เดิมไม่ถูกต้อง");
+      return res.json({ success: false, message: fail.message });
     }
 
     const newPinStr = String(newPin);

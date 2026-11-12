@@ -9,6 +9,7 @@ import {
   permissionsOf,
   extraRolesOut,
 } from "../utils/roles.js";
+import { setAuditContext } from "../utils/auditLogger.js";
 
 // ประกอบชื่อแสดงผลจาก ชื่อ + นามสกุล (User.name)
 const composeName = (first, last) =>
@@ -585,6 +586,38 @@ export const updateUserExtraRoles = async (req, res) => {
       include: { ...USER_ROLES_LIGHT_INCLUDE, employee: true },
     });
     return res.json({ success: true, user: sanitizeUser(updated) });
+  } catch (error) {
+    return res.json({ success: false, message: error.message });
+  }
+};
+
+// =====================================================
+// UNLOCK LOGIN (ADMIN) — ปลดล็อกบัญชีที่ใส่รหัสผ่านผิดครบ 5 ครั้ง ไม่ต้องรอ 15 นาที
+// ใช้เมื่อยืนยันแล้วว่าเป็นเจ้าของบัญชีจำรหัสผิดเอง (ไม่ใช่คนอื่นพยายามเข้า)
+// =====================================================
+export const unlockUserLogin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    await prisma.user.update({
+      where: { id },
+      // failedSinceLastLogin ไม่ล้าง — เจ้าของบัญชียังเห็นแจ้งเตือนว่ามีการใส่รหัสผิดตอนล็อกอินครั้งถัดไป
+      data: { failedLoginAttempts: 0, loginLockedUntil: null },
+    });
+
+    setAuditContext(req, {
+      summary: `ปลดล็อกบัญชี ${user.name || ""} (${user.email})`.trim(),
+      resourceId: user.id,
+    });
+
+    return res.json({ success: true, message: "ปลดล็อกบัญชีแล้ว" });
   } catch (error) {
     return res.json({ success: false, message: error.message });
   }

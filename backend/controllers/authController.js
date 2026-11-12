@@ -4,6 +4,7 @@ import prisma from "../config/prisma.js";
 import transporter from "../config/nodemailer.js";
 import { PASSWORD_RESET_TEMPLATE } from "../config/emailTemplates.js";
 import { clientIp } from "../utils/auditLogger.js";
+import { notifyRoles } from "../services/notificationService.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -16,7 +17,9 @@ const IP_MAX_FAILS = 20;
 const IP_WINDOW_MS = 15 * 60 * 1000;
 
 // ข้อความเดียวทั้งอีเมลไม่มี / รหัสผิด — ไม่บอกคนนอกว่าอีเมลไหนมีบัญชี
-const INVALID_LOGIN = "อีเมลหรือรหัสผ่านไม่ถูกต้อง";
+//   บอก "กติกา" แต่ไม่บอก "เหลืออีกกี่ครั้ง" (ตัวนับมีเฉพาะอีเมลที่มีบัญชีจริง → บอกตัวเลข = บอกว่ามีบัญชี)
+//   จำนวนครั้งที่ผิดจริง เจ้าของบัญชีเห็นในกระดิ่งหลังล็อกอินสำเร็จ (notifyOwnerOfFailedLogins)
+const INVALID_LOGIN = `อีเมลหรือรหัสผ่านไม่ถูกต้อง · ถ้าใส่ผิดครบ ${MAX_FAILED_ATTEMPTS} ครั้ง บัญชีจะถูกล็อก 15 นาที`;
 const TOO_MANY_FROM_IP = "พยายามเข้าสู่ระบบผิดหลายครั้งเกินไป กรุณารอ 15 นาทีแล้วลองใหม่";
 
 // hash หลอก — อีเมลที่ไม่มีในระบบก็ยังเสียเวลา bcrypt เท่ากัน (กันจับเวลาตอบเพื่อเดาอีเมล)
@@ -47,22 +50,73 @@ const noteIpFail = (ip) => {
 const lockedMessage = (user) => {
   if (!user?.loginLockedUntil || user.loginLockedUntil <= new Date()) return null;
   const minutesLeft = Math.ceil((user.loginLockedUntil.getTime() - Date.now()) / 60000);
-  return `บัญชีถูกล็อกชั่วคราวเพราะใส่รหัสผ่านผิดหลายครั้ง ลองใหม่อีกครั้งใน ${minutesLeft} นาที`;
+  return `บัญชีถูกล็อกชั่วคราวเพราะใส่รหัสผ่านผิดหลายครั้ง ลองใหม่อีกครั้งใน ${minutesLeft} นาที หรือติดต่อผู้ดูแลระบบ`;
 };
 
+const fmtTimeTH = (d) =>
+  new Date(d).toLocaleString("th-TH", {
+    timeZone: "Asia/Bangkok",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+// แจ้งเตือนห้ามทำให้ login พัง — ยิงแล้วไม่รอ ถ้าพลาดแค่ log ไว้
+const notifySafe = (fn) =>
+  Promise.resolve()
+    .then(fn)
+    .catch((err) => console.error("[auth] notify:", err.message));
+
+// บัญชีถูกล็อก → แจ้ง admin ทุกคน (กดลิงก์ไปปลดล็อกได้ที่ Users & Roles)
+//   admin ถูกล็อกเอง / หลายบัญชีถูกล็อกใกล้กัน = สัญญาณว่ามีคนพยายามเจาะ
+const notifyAdminsOfLock = (user, ip, until) =>
+  notifySafe(() =>
+    notifyRoles(["admin"], {
+      type: "security",
+      title: "🔒 บัญชีผู้ใช้ถูกล็อก",
+      message: `${user.name || user.email} (${user.email}) ใส่รหัสผ่านผิด ${MAX_FAILED_ATTEMPTS} ครั้ง · ล็อกถึง ${fmtTimeTH(until)}${ip ? ` · IP ${ip}` : ""} · ถ้าเป็นเจ้าของบัญชีจำรหัสผิด กดปลดล็อกได้ที่ Users & Roles`,
+      link: "/users",
+    }),
+  );
+
+// ล็อกอินสำเร็จ แต่ก่อนหน้านี้มีคนใส่รหัสผิด → บอกเจ้าของบัญชีในกระดิ่ง (ตรงนี้บอกตัวเลขได้ — เห็นเฉพาะเจ้าของ)
+const notifyOwnerOfFailedLogins = (user) =>
+  notifySafe(() =>
+    prisma.notification.create({
+      data: {
+        userId: user.id,
+        type: "security",
+        title: "⚠️ มีการใส่รหัสผ่านผิดในบัญชีของคุณ",
+        message: `ใส่รหัสผ่านผิด ${user.failedSinceLastLogin} ครั้ง ตั้งแต่เข้าสู่ระบบครั้งก่อน${
+          user.lastFailedLoginAt ? ` · ล่าสุด ${fmtTimeTH(user.lastFailedLoginAt)}` : ""
+        } · ถ้าไม่ใช่คุณ ให้เปลี่ยนรหัสผ่านที่หน้า Profile`,
+        link: null,
+      },
+    }),
+  );
+
 // นับครั้งที่ผิด (increment ใน DB — กดพร้อมกันหลายแท็บก็นับครบ) ครบแล้วล็อก
-async function registerFailedLogin(user) {
+//   failedLoginAttempts  = ตัวนับไปสู่การล็อก (ล็อกแล้วเริ่มนับใหม่)
+//   failedSinceLastLogin = ผิดทั้งหมดตั้งแต่ล็อกอินสำเร็จครั้งก่อน (ไว้บอกเจ้าของบัญชี)
+async function registerFailedLogin(user, ip) {
   const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { failedLoginAttempts: { increment: 1 } },
+    data: {
+      failedLoginAttempts: { increment: 1 },
+      failedSinceLastLogin: { increment: 1 },
+      lastFailedLoginAt: new Date(),
+    },
     select: { failedLoginAttempts: true },
   });
   if (updated.failedLoginAttempts < MAX_FAILED_ATTEMPTS) return null;
+  const until = new Date(Date.now() + LOCK_DURATION_MS);
   await prisma.user.update({
     where: { id: user.id },
-    data: { failedLoginAttempts: 0, loginLockedUntil: new Date(Date.now() + LOCK_DURATION_MS) },
+    data: { failedLoginAttempts: 0, loginLockedUntil: until },
   });
-  return "ใส่รหัสผ่านผิดหลายครั้งเกินไป บัญชีถูกล็อกชั่วคราว 15 นาที";
+  notifyAdminsOfLock(user, ip, until);
+  return `ใส่รหัสผ่านผิดครบ ${MAX_FAILED_ATTEMPTS} ครั้ง บัญชีถูกล็อกชั่วคราว 15 นาที — ลองใหม่ภายหลัง หรือติดต่อผู้ดูแลระบบ`;
 }
 
 const cookieOptions = {
@@ -177,17 +231,18 @@ export const login = async (req, res) => {
 
     if (!user || !isMatch) {
       noteIpFail(ip);
-      const lockMsg = user ? await registerFailedLogin(user) : null;
+      const lockMsg = user ? await registerFailedLogin(user, ip) : null;
       return res
         .status(lockMsg ? 429 : 401)
         .json({ success: false, message: lockMsg || INVALID_LOGIN });
     }
 
-    // สำเร็จ → ล้างตัวนับ (เขียน DB เฉพาะตอนที่เคยผิด)
-    if (user.failedLoginAttempts || user.loginLockedUntil) {
+    // สำเร็จ → ล้างตัวนับ (เขียน DB เฉพาะตอนที่เคยผิด) + บอกเจ้าของบัญชีถ้ามีคนใส่รหัสผิดไว้
+    if (user.failedLoginAttempts || user.loginLockedUntil || user.failedSinceLastLogin) {
+      if (user.failedSinceLastLogin > 0) notifyOwnerOfFailedLogins(user);
       await prisma.user.update({
         where: { id: user.id },
-        data: { failedLoginAttempts: 0, loginLockedUntil: null },
+        data: { failedLoginAttempts: 0, loginLockedUntil: null, failedSinceLastLogin: 0 },
       });
     }
 

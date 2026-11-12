@@ -20,6 +20,7 @@ import {
   createRole,
   updateRole, // ← เพิ่ม
   deleteRole,
+  unlockUserLogin, // ← ปลดล็อกบัญชีที่ใส่รหัสผิดครบ 5 ครั้ง
 } from "../controllers/userController.js";
 
 const userRouter = express.Router();
@@ -76,6 +77,13 @@ userRouter.put(
   userAuth,
   authorize("system", "manage"),
   updateUserExtraRoles,
+);
+// ปลดล็อกบัญชีที่ใส่รหัสผ่านผิดครบ 5 ครั้ง (ไม่ต้องรอ 15 นาที)
+userRouter.put(
+  "/:id/unlock-login",
+  userAuth,
+  authorize("system", "manage"),
+  unlockUserLogin,
 );
 userRouter.get(
   "/available-employees",

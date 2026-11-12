@@ -37,6 +37,14 @@ const TITLE_PREFIX_OPTIONS = ["", "นาย", "นาง", "นางสาว"
 const SHOW_FORCE_DELETE =
   import.meta.env.DEV || import.meta.env.VITE_SHOW_FORCE_DELETE === "true";
 
+// สถานะการล็อกบัญชี (ใส่รหัสผ่านผิดครบ 5 ครั้ง → ล็อก 15 นาที — authController.login)
+const lockInfo = (u) => {
+  const until = u.loginLockedUntil ? new Date(u.loginLockedUntil) : null;
+  return until && until > new Date() ? until : null;
+};
+const fmtClock = (d) =>
+  d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+
 const emptyAddForm = {
   titlePrefix: "",
   firstName: "",
@@ -213,6 +221,7 @@ export default function AdminUsers() {
   const [savingRoleUserId, setSavingRoleUserId] = useState(null);
   const [linkingUserId, setLinkingUserId] = useState(null);
   const [savingExtraUserId, setSavingExtraUserId] = useState(null);
+  const [unlockingUserId, setUnlockingUserId] = useState(null);
 
   // ── roles modal ──
   const [showRoles, setShowRoles] = useState(false);
@@ -458,6 +467,35 @@ export default function AdminUsers() {
     }
   };
 
+  // ปลดล็อกบัญชีที่ใส่รหัสผ่านผิดครบ 5 ครั้ง — ใช้เมื่อยืนยันแล้วว่าเป็นเจ้าของบัญชีจำรหัสผิดเอง
+  const handleUnlock = async (u) => {
+    if (
+      !window.confirm(
+        `ปลดล็อกบัญชี "${u.name}"?\n\nควรยืนยันกับเจ้าของบัญชีก่อนว่าเป็นคนใส่รหัสผิดเอง — ถ้าไม่ใช่ อาจมีคนพยายามเข้าบัญชีนี้ ให้เจ้าของเปลี่ยนรหัสผ่าน`,
+      )
+    )
+      return;
+    try {
+      setUnlockingUserId(u.id);
+      const res = await axios.put(
+        `${backendUrl}/api/user/${u.id}/unlock-login`,
+        {},
+        { withCredentials: true },
+      );
+      if (res.data.success) {
+        toast.success("ปลดล็อกบัญชีแล้ว");
+        fetchAll({ keepDrafts: true });
+      } else {
+        toast.error(res.data.message || "ปลดล็อกไม่สำเร็จ");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(errMsg(error, "เกิดข้อผิดพลาด"));
+    } finally {
+      setUnlockingUserId(null);
+    }
+  };
+
   const handleDelete = async (u) => {
     if (!window.confirm(`ลบผู้ใช้ "${u.name}"?`)) return;
     try {
@@ -647,14 +685,31 @@ export default function AdminUsers() {
   const displayName = (u) =>
     u.titlePrefix ? `${u.titlePrefix}${u.name}` : u.name;
 
-  const renderName = (u) => (
-    <>
-      <span className="font-bold">{displayName(u)}</span>
-      {isSelf(u.id) && (
-        <span className="ml-1.5 text-[10px] text-gray-400">(you)</span>
-      )}
-    </>
-  );
+  const renderName = (u) => {
+    const lockedUntil = lockInfo(u);
+    return (
+      <>
+        <span className="font-bold">{displayName(u)}</span>
+        {isSelf(u.id) && (
+          <span className="ml-1.5 text-[10px] text-gray-400">(you)</span>
+        )}
+        {lockedUntil ? (
+          <div
+            className="mt-1 inline-flex items-center gap-1 rounded-md bg-[#f8d7da] px-2 py-0.5 text-[11px] font-bold text-[#842029]"
+            title="ใส่รหัสผ่านผิดครบ 5 ครั้ง — ปลดล็อกเองอัตโนมัติเมื่อครบเวลา หรือกด 🔓 ปลดล็อก"
+          >
+            🔒 ล็อกถึง {fmtClock(lockedUntil)}
+          </div>
+        ) : (
+          u.failedLoginAttempts > 0 && (
+            <div className="mt-0.5 text-[11px] text-[#b45309]" title="ล็อกเมื่อผิดครบ 5 ครั้ง · ล้างเมื่อเข้าสู่ระบบสำเร็จ">
+              ใส่รหัสผิด {u.failedLoginAttempts}/5 ครั้ง
+            </div>
+          )
+        )}
+      </>
+    );
+  };
 
   // Role: ตัวเอง = badge อย่างเดียว (เปลี่ยนไม่ได้) / คนอื่น = dropdown + ปุ่ม Save
   // ที่โผล่เฉพาะตอนเปลี่ยน (เดิมโชว์ badge + dropdown ซ้ำกัน และปุ่ม Save อยู่ไกลในคอลัมน์ Actions)
@@ -801,8 +856,19 @@ export default function AdminUsers() {
 
   const renderActions = (u) => {
     const self = isSelf(u.id);
+    const lockedUntil = lockInfo(u);
     return (
       <div className="flex flex-nowrap gap-1.5">
+        {lockedUntil && (
+          <button
+            onClick={() => handleUnlock(u)}
+            disabled={unlockingUserId === u.id}
+            title={`ปลดล็อกทันที (ไม่ต้องรอถึง ${fmtClock(lockedUntil)})`}
+            className={`${ACT_BTN} ${LIFT_WHITE} text-[#2B2F78]`}
+          >
+            {unlockingUserId === u.id ? "…" : "🔓 ปลดล็อก"}
+          </button>
+        )}
         <button
           title="แก้ไขข้อมูลผู้ใช้"
           onClick={() => openEditUser(u)}

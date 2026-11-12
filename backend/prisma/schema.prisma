@@ -270,6 +270,10 @@ model User {
   failedLoginAttempts Int       @default(0)
   loginLockedUntil    DateTime?
 
+  // แจ้งเจ้าของบัญชีในกระดิ่งหลังล็อกอินสำเร็จ ว่ามีคนใส่รหัสผิดกี่ครั้ง
+  failedSinceLastLogin Int       @default(0)
+  lastFailedLoginAt    DateTime?
+
   bansIssued EmployeeBan[] @relation("BansIssued")
   bansLifted EmployeeBan[] @relation("BansLifted")
 
