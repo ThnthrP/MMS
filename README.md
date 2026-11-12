@@ -202,7 +202,9 @@ filter). One "กรอกให้ทุกคน" panel sets the team's travel
 Team No. = ON Number and Project filled in from the project, Field, Platform,
 outbound / return travel) and MOB / D-MOB (defaults from the requirement's
 start / end dates) for every undeployed worker, next to the training-topics
-button. These details are saved to each worker's deployment history (CV).
+button. Once Platform is filled, the panel collapses to a one-line summary so
+the worker table stays in view. These details are saved to each worker's
+deployment history (CV).
 ![Mobilization](screenshots/mobilization.png)
 
 #### ⭐ Post-Project Review
@@ -397,7 +399,8 @@ shown at the top of the page.
     deploy to site; position chips filter the list, and one fill-all panel
     sets travel details (Traveling Team No. / Project from the project,
     Field, Platform, outbound / return) and MOB / D-MOB (defaults from the
-    requirement dates) for every undeployed worker. Deployment details are
+    requirement dates) for every undeployed worker; the panel collapses to a
+    summary line once the required Platform is filled. Deployment details are
     kept on the `Assignment` and appear in the worker's CV
   - *Post-Project Review:* per-worker rating and rehire recommendation, with
     review progress, reviewer name and date, row filter, and Save all
