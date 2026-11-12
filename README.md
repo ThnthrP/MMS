@@ -283,7 +283,7 @@ Upload HR Excel files (Training Record or PE Tracking), preview what will change
 |-------|-----------|
 | Frontend | React, Vite, React Router, Tailwind CSS v4, react-select, Axios, Recharts, lucide-react, react-toastify |
 | Backend | Node.js, Express.js, Prisma ORM, PostgreSQL 16, Multer (file uploads), bcryptjs |
-| Auth | JWT in HTTP-only cookies (separate sessions for MMS users and Worker App) |
+| Auth | JWT in HTTP-only cookies (separate sessions for MMS users and Worker App), account lockout after repeated failed logins |
 | Development | Docker Compose (frontend / backend / database containers) |
 | Production | Ubuntu server, PM2 (backend process), static Vite build for the frontend |
 
@@ -313,7 +313,13 @@ shown at the top of the page.
 | | Audit Log | `/audit-logs` |
 | | Data Import | `/data-import` |
 
-> The menu is defined in `frontend/src/components/layout/sidebarMenu.js`;
+Under the menu search box, **Collapse** shrinks the sidebar to icons and
+**Collapse all / Expand all** folds every section. A folded section that
+contains the current page shows an orange dot. In icon mode, » (expand) is at
+the top and the search icon expands the sidebar with the cursor in the search box.
+
+> The menu is defined in `frontend/src/components/layout/sidebarMenu.js`
+> (data only); the sidebar UI is `Sidebar.jsx` in the same folder;
 > route access is enforced in `AppRouter.jsx` (`ProtectedRoute allowRoles`).
 > Keep both in sync when adding a page.
 
@@ -453,7 +459,10 @@ shown at the top of the page.
 - **Departments:** department list used across worker records
 
 ### Worker App
-- Login with Employee ID + PIN, with lockout after repeated failed attempts
+- Login with Employee ID + PIN. A wrong PIN shows how many attempts are left;
+  5 wrong PINs lock the account for 15 minutes (also counted on the change-PIN
+  page), and admin + `manpower_supply` get a bell notification linking to the
+  worker
 - Forced PIN change on first login; self-service PIN change with rules
   (no repeated digits, sequences, Employee ID, or birth date)
 - Readiness view, job confirmation, and leave requests
@@ -461,13 +470,35 @@ shown at the top of the page.
 ### Admin & System
 - **Role-based access control (RBAC):** one primary role plus optional extra
   roles per user; access is the union of all roles
-- **Users & Roles:** users, roles, extra roles, and links to worker records
+- **Users & Roles:** users, roles, extra roles, and links to worker records.
+  Each user shows failed login attempts ("ใส่รหัสผิด 2/5 ครั้ง") or a
+  🔒 lock badge with an **Unlock** button (`PUT /api/user/:id/unlock-login`,
+  recorded in the Audit Log)
+- **MMS login security:**
+  - 5 wrong passwords lock the account for 15 minutes (stored in the database,
+    so a restart does not reset it); a password reset also clears the lock
+  - Per-IP limit: 20 failed logins in 15 minutes from one IP returns 429
+    (kept in memory). It needs nginx to pass the real client IP, see
+    [Production Deployment](#production-deployment)
+  - Wrong email and wrong password get the same message and response time, so
+    the login page does not reveal which emails have an account. The message
+    states the rule (5 attempts) without a remaining count
+  - Bell notifications: all admins when an account is locked (name, email,
+    lock time, IP); the account owner after their next successful login, with
+    the number of failed attempts since the previous login
 - **Bulk Set PIN:** issue Worker App PINs to many workers at once (PINs are
   shown once and exported to Excel; handle the file as confidential)
 - **Audit Log:** automatic record of who did what (create, update, delete,
   approve, upload, login/logout, failed login) across the MMS and the
   Worker App. Passwords, PINs, and tokens are redacted. The admin page has
   filters, a detail view with before/after changes, and CSV export
+  - The actor comes from `userAuth` / `workerAuth`. On login / logout routes it
+    is read only from the cookie of that channel (`token` for `/api/auth/*`,
+    `workerToken` for `/api/worker/*`), so a Worker App session open in the
+    same browser is never recorded as the MMS user. A failed login is recorded
+    as "not logged in" with the email typed
+  - `backend/scripts/fixAuthAuditActors.js` (one-off, dry run unless
+    `--apply`) corrects login / logout rows recorded before this fix
 - **Data Import (admin):** upload HR Excel files from the browser, with a
   preview step before anything is saved
   - *Training Record* (sheet "Record"): trainings, medical check-ups, and
@@ -481,7 +512,8 @@ shown at the top of the page.
     `backend/scripts/importDeploymentHistory.js` (dry run unless `--apply`)
     adds past deployments, fills blanks on existing roster rows, and skips
     duplicates. Delete the Excel file from the server after importing
-- **Notifications:** in-app notification bell with links to related pages
+- **Notifications:** in-app notification bell with links to related pages,
+  including security alerts (locked accounts, failed logins)
 - **Email notifications (phase 1, off by default):** urgent events (worker
   declined a job, no response by the deadline, failed Check In, PE approval
   requested) are queued in `EmailOutbox` and sent by a background worker with
@@ -600,6 +632,7 @@ MMS/
 │   ├── scripts/                   # data import / setup scripts; backfillRequestedBy.js
 │   │                              #   (one-off: fill "Requested by" from the Audit Log; dry run unless --apply)
 │   │                              # importDeploymentHistory.js (HR deployment-history template; dry run unless --apply)
+│   │                              # fixAuthAuditActors.js (one-off: fix login/logout actors in the Audit Log; dry run unless --apply)
 │   ├── uploads/                   # worker photos, certificates, attachments
 │   └── server.js
 │
@@ -676,10 +709,16 @@ docker exec -it chevron-backend node prisma/seed.js
 
 ```bash
 cd <repo-root>
+git status                       # must be clean; see the notes below if not
 git pull origin main
+
+# Backup before a schema change (keep on the server only, chmod 600, delete after checking)
+sudo -u postgres pg_dump -Fc <db-name> > ~/backups/mms_before_<change>_<date>.dump
+chmod 600 ~/backups/mms_before_<change>_<date>.dump
 
 # Backend: apply pending migrations (only when schema.prisma changed)
 cd backend
+npx prisma migrate status        # check the pending list before deploying
 npx prisma migrate deploy
 npx prisma generate
 npm install                      # only when backend/package.json changed
@@ -699,10 +738,21 @@ npm run build
   break the next `git pull`; if that happens, run
   `sudo chown -R <deploy-user>:<deploy-user> .` in the repo root.
 - Without `sudo`, `pm2` reports "Process not found" for `mms-backend`.
+- Never run `prisma migrate dev`, `migrate reset`, `db push`, or `db seed` on
+  the server. If `migrate status` shows unexpected pending migrations or
+  drift, stop and check first.
+- Do not edit files or run `npm install <package>` on the server. If
+  `git status` is not clean, look at `git diff` first, move changes the app
+  needs into the repo, and `git stash` the rest before pulling.
 
 > Data Import uploads Excel files up to 20 MB. If nginx sits in front of the
 > backend, set `client_max_body_size 20M;` in the server block, otherwise
 > uploads fail with HTTP 413.
+
+> The per-IP login limit and the Audit Log IP column read
+> `X-Forwarded-For`. In the nginx `location` that proxies to the backend, set
+> `proxy_set_header X-Forwarded-For $remote_addr;`. Without it every request
+> looks like `127.0.0.1`, so all users share one failed-login counter.
 
 ---
 
