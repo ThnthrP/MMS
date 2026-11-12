@@ -120,7 +120,12 @@ approved.
 
 #### 🔍 Gap Analysis
 Per-worker check against the contract's requirements: Mandatory, Assigned,
-and other courses, each with completed and missing items.
+and other courses, each with completed and missing items. A box at the top
+lists the worker's training rounds in progress or upcoming (from Training
+Plan), and missing courses that already have a round show "🗓 กำลังอบรม" or
+"🗓 เริ่ม <date>", so HR does not request them twice. The same box and tags
+appear in Assign Names (Client Requirement Check) and Compliance (Gap
+Analysis, Training Alerts).
 ![Gap Analysis](screenshots/gap-analysis.png)
 
 #### ✅ PE Approvals
@@ -202,9 +207,10 @@ filter). One "กรอกให้ทุกคน" panel sets the team's travel
 Team No. = ON Number and Project filled in from the project, Field, Platform,
 outbound / return travel) and MOB / D-MOB (defaults from the requirement's
 start / end dates) for every undeployed worker, next to the training-topics
-button. Once Platform is filled, the panel collapses to a one-line summary so
-the worker table stays in view. These details are saved to each worker's
-deployment history (CV).
+button. When a project opens with Platform already filled, the panel
+collapses to a labeled summary (every field with its name; empty fields show a
+red "—" and a red line naming them) so the worker table stays in view. These
+details are saved to each worker's deployment history (CV).
 ![Mobilization](screenshots/mobilization.png)
 
 #### ⭐ Post-Project Review
@@ -325,7 +331,8 @@ shown at the top of the page.
 - **Compliance Center:** worker-centric overview that keeps training alerts
   and medical status in separate columns, click-to-filter status counts, plus
   client requirement gap analysis (Mandatory / Assigned / Others) and PE
-  Tracking export
+  Tracking export. The Gap Analysis and Training Alerts modals show the
+  worker's planned training rounds (see Training Plan)
 - **Analytics & Reports:** workforce, compliance, and project reports
 
 ### Operations
@@ -344,7 +351,8 @@ shown at the top of the page.
   project progress bar shows approved / needed, missing headcount, and
   workers awaiting approval or PE; "go to Mobilization" appears only when
   every position is filled and approved (a secondary link allows partial
-  mobilization)
+  mobilization). The Client Requirement Check modal shows the worker's planned
+  training rounds and tags missing courses that already have a round
 - **PE Approvals:** workers below 100% match can be submitted with a reason;
   the Project Engineer approves or rejects each worker, grouped by
   project and position
@@ -393,14 +401,21 @@ shown at the top of the page.
     for a group (shared dates and certificate file). Opened from the tab, from
     a round in Training Calendar, from Training Bookings, or from a confirmed
     request, with the workers pre-selected
+  - *Planned rounds in other pages:* `TrainingPlanNotice` reads the same data
+    (`GET /api/training-plan`, in-progress and upcoming only) and is shown in
+    Assign Names and Compliance modals. The response is cached in the browser
+    for 60 seconds and shared by all modals; saving on Add Training Plan or
+    Training Calendar clears the cache
 - **Worker Schedule:**
   - *Mobilization:* pre-mobilization checklist (alcohol test, drug test, PPE
     inspection, pre-field training, baggage inspection, blood pressure), then
     deploy to site; position chips filter the list, and one fill-all panel
     sets travel details (Traveling Team No. / Project from the project,
     Field, Platform, outbound / return) and MOB / D-MOB (defaults from the
-    requirement dates) for every undeployed worker; the panel collapses to a
-    summary line once the required Platform is filled. Deployment details are
+    requirement dates) for every undeployed worker. The panel collapses to a
+    labeled summary when a project opens with Platform filled (it stays open
+    while Platform, the required field, is empty, and never collapses while
+    typing); empty optional fields are listed in red. Deployment details are
     kept on the `Assignment` and appear in the worker's CV
   - *Post-Project Review:* per-worker rating and rehire recommendation, with
     review progress, reviewer name and date, row filter, and Save all
@@ -542,6 +557,7 @@ MMS/
 │   │   │   ├── worker-layout/     # Worker App layout
 │   │   │   ├── print/             # CV / Roster / Skill Matrix print components
 │   │   │   ├── SelectedPeoplePanel.jsx  # "selected workers" side panel (Bulk Add, Request Training / Medical)
+│   │   │   ├── TrainingPlanNotice.jsx   # a worker's planned training rounds (gap / alert modals)
 │   │   │   └── ProtectedRoute.jsx
 │   │   ├── config/                # clientMode.js (single / multi-client mode)
 │   │   ├── context/               # AppContext, WorkerAppContext
@@ -612,6 +628,8 @@ MMS/
   the buttons it shows
 - Tables scroll inside their own box (sticky header) with the height measured
   from the space left on screen, so the pager stays visible
+- Large "fill for everyone" panels collapse to a labeled one-line summary once
+  their required fields are set; missing optional fields are listed in red
 
 ---
 
