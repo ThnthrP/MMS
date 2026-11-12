@@ -18,8 +18,9 @@ import { AppContent } from "../../context/AppContext";
 //   1. ตัวเลขหลัก (กดแล้วไปหน้าที่เกี่ยวข้อง)
 //   2. งานที่รอดำเนินการ — ขาดคน / PE / เริ่มงาน 30 วัน (API เดิม) + Booking รอ HR / D-MOB 7 วัน (/api/dashboard)
 //      role ไหนเรียก API ไหนไม่ได้ → ช่องนั้นซ่อนเอง
-//   3. สถานะพนักงาน + Cert compliance
-//   4. Cert alerts แบบตาราง (กดแถว → รายชื่อ)
+//      แถว 2 ช่องที่ 3 = สถานะพนักงาน (Mobilization / Availability) — เดิมเป็น section แยกครึ่งจอ
+//   3. Certification — section เดียว สลับ "ตาราง (กดแถว → รายชื่อ)" / "กราฟตามประเภท"
+//      (เดิมกราฟกับตารางแสดงข้อมูลชุดเดียวกันซ้อนกัน หน้ายาวเกือบ 4 จอ)
 // ══════════════════════════════════════════════════════════
 
 // recharts ต้องใช้ค่าสีจริง ไม่ใช่ class
@@ -44,7 +45,15 @@ const DAY_MS = 86400000;
 const TODO_ROW =
   "grid grid-cols-1 gap-y-5 lg:grid-cols-3 lg:gap-y-0 lg:divide-x lg:divide-gray-200 [&>*]:min-w-0 lg:[&>*]:px-6 lg:[&>*:first-child]:pl-0 lg:[&>*:last-child]:pr-0";
 const UPCOMING_DAYS = 30;
-const CHART_MAX = 12; // กราฟแสดงเฉพาะ N ประเภทที่มีปัญหามากที่สุด (ตารางด้านล่างแสดงครบ)
+const CHART_MAX = 12; // กราฟแสดงเฉพาะ N ประเภทที่มีปัญหามากที่สุด (มุมมองตารางแสดงครบ)
+const CERT_VIEW_KEY = "dashboardCertView"; // "table" | "chart" — จำมุมมองล่าสุด (ต่อเครื่อง)
+const readCertView = () => {
+  try {
+    return localStorage.getItem(CERT_VIEW_KEY) === "chart" ? "chart" : "table";
+  } catch {
+    return "table";
+  }
+};
 
 // ══════════════════════════════════════════════════════════
 // helpers
@@ -200,6 +209,15 @@ export default function Dashboard() {
   const alertsRef = useRef(null);
 
   const isNarrow = useIsNarrow();
+  const [certView, setCertViewState] = useState(readCertView);
+  const setCertView = (v) => {
+    setCertViewState(v);
+    try {
+      localStorage.setItem(CERT_VIEW_KEY, v);
+    } catch {
+      /* ไม่ critical */
+    }
+  };
 
   // initial = โหลดครั้งแรก (แสดง Loading ทั้งหน้า) / refresh = ข้อมูลเดิมค้างไว้
   const load = async ({ initial = false } = {}) => {
@@ -303,8 +321,6 @@ export default function Dashboard() {
     { key: "on_site", name: "On-Site", value: data.mobilization.on_site || 0, color: MOB.on_site },
   ];
   const mobTotal = mobData.reduce((n, s) => n + s.value, 0) || 1;
-  const availTotal =
-    data.availability.available + data.availability.unavailable || 1;
 
   // ── งานที่รอดำเนินการ ──
   // 1) ตำแหน่งที่ยังขาดคน (requirement ที่ยังไม่จบ)
@@ -341,7 +357,7 @@ export default function Dashboard() {
     : [];
   const bookings = data.pendingBookings || null; // null = backend เก่า / โหลดไม่ได้
   const demobSoon = Array.isArray(data.demobSoon) ? data.demobSoon : null;
-  const showTodo = requirements || peItems || overview || bookings || demobSoon;
+  const showTodo = true; // แถว 2 มีสถานะพนักงานเสมอ
 
   // ── cert: เรียงตัวที่มีปัญหาไว้บนสุด ──
   const certSorted = [...data.certByType]
@@ -452,9 +468,10 @@ export default function Dashboard() {
           sub={`${alertGroups.length} cert types · กดเพื่อดูรายการ`}
           color="#dc5b2c"
           tint="#fff5f0"
-          onClick={() =>
-            alertsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
+          onClick={() => {
+            setCertView("table");
+            alertsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
         />
       </div>
 
@@ -604,7 +621,6 @@ export default function Dashboard() {
             )}
 
           </div>
-          {(bookings || demobSoon) && (
           <div className={`${TODO_ROW} mt-4 border-t border-gray-200 pt-4`}>
             {bookings && (
               <div className="min-w-0">
@@ -698,156 +714,100 @@ export default function Dashboard() {
                 )}
               </div>
             )}
+
+            {/* สถานะพนักงาน — แท่งเดียวแบ่งสัดส่วน (แทนวงกลมที่ชิ้นเล็กมองไม่เห็น) */}
+            <div className="min-w-0">
+              <TodoHead
+                title="สถานะพนักงาน (Mobilization)"
+                count={data.totalWorkers}
+                unit={`คน · Available ${data.availability.available} · Unavailable ${data.availability.unavailable}`}
+                tone="text-[#1e3a5f]"
+                to="/workers"
+                linkText="Worker Pool"
+              />
+              <div className="flex h-2.5 overflow-hidden rounded-full bg-gray-100">
+                {mobData.map((s) =>
+                  s.value > 0 ? (
+                    <div
+                      key={s.key}
+                      title={`${s.name} ${s.value}`}
+                      style={{
+                        width: `${Math.max(1.5, (s.value / mobTotal) * 100)}%`,
+                        background: s.color,
+                      }}
+                    />
+                  ) : null,
+                )}
+              </div>
+              <div className="mt-2">
+                {mobData.map((s) => (
+                  <div
+                    key={s.key}
+                    className="flex items-center justify-between border-t border-gray-100 py-2 text-[13px]"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
+                      {s.name}
+                    </span>
+                    <span>
+                      <b>{s.value}</b>
+                      <span className="ml-2 text-xs text-gray-400">
+                        {Math.round((s.value / mobTotal) * 100)}%
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          )}
         </section>
       )}
 
-      {/* ════════ สถานะพนักงาน + Cert compliance ════════ */}
-      <section className="grid grid-cols-1 gap-x-8 border-b border-gray-200 lg:grid-cols-[minmax(0,340px)_1fr]">
-        <div className="min-w-0 py-4">
-          <div className={SECTION_HEAD}>Worker Status (Mobilization)</div>
-          {/* แท่งเดียวแบ่งสัดส่วน — แทนวงกลมที่ชิ้นเล็ก (On-Site 1 คน) มองไม่เห็น */}
-          <div className="flex h-3 overflow-hidden rounded-full bg-gray-100">
-            {mobData.map((s) =>
-              s.value > 0 ? (
-                <div
-                  key={s.key}
-                  title={`${s.name} ${s.value}`}
-                  style={{
-                    width: `${Math.max(1.5, (s.value / mobTotal) * 100)}%`,
-                    background: s.color,
-                  }}
-                />
-              ) : null,
-            )}
-          </div>
-          <div className="mt-3">
-            {mobData.map((s) => (
-              <div
-                key={s.key}
-                className="flex items-center justify-between border-b border-gray-100 py-2 text-[13px]"
-              >
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ background: s.color }}
-                  />
-                  {s.name}
-                </span>
-                <span>
-                  <b>{s.value}</b>
-                  <span className="ml-2 text-xs text-gray-400">
-                    {Math.round((s.value / mobTotal) * 100)}%
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className={`${SECTION_TITLE} mb-2 mt-4`}>Availability</div>
-          {[
-            ["Available", data.availability.available, "bg-[#198754]"],
-            ["Unavailable", data.availability.unavailable, "bg-[#dc3545]"],
-          ].map(([label, val, bar]) => (
-            <div key={label} className="mb-2">
-              <div className="mb-[3px] flex justify-between text-xs">
-                <span>{label}</span>
-                <strong>{val}</strong>
-              </div>
-              <div className="h-1.5 rounded bg-[#eef0f2]">
-                <div
-                  className={`h-1.5 rounded ${bar}`}
-                  style={{ width: `${Math.round((val / availTotal) * 100)}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="min-w-0 py-4 lg:border-l lg:border-gray-200 lg:pl-8">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-            <span className={`${SECTION_HEAD} mb-0`}>
-              Certification Compliance by Type
-            </span>
-            <span className="text-[11px] text-gray-400">
-              {data.certByType.length > CHART_MAX
-                ? `แสดง ${CHART_MAX} ประเภทที่มีปัญหามากที่สุด · ครบทุกประเภทในตารางด้านล่าง`
-                : "เรียงตัวที่มีปัญหา (Expired + Expiring) ไว้บนสุด"}
-            </span>
-          </div>
-          {certSorted.length ? (
-            <ResponsiveContainer
-              width="100%"
-              height={Math.max(260, certSorted.length * 30)}
-            >
-              <BarChart
-                data={certSorted}
-                layout="vertical"
-                margin={{ top: 8, right: isNarrow ? 8 : 24, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#eef0f2"
-                  horizontal={false}
-                />
-                <XAxis
-                  type="number"
-                  allowDecimals={false}
-                  tick={{ fontSize: 11, fill: "#adb5bd" }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={yAxisWidth}
-                  interval={0}
-                  tick={({ x, y, payload }) => (
-                    <text
-                      x={x}
-                      y={y}
-                      dy={4}
-                      textAnchor="end"
-                      fontSize={11}
-                      fill="#495057"
-                    >
-                      <title>{payload.value}</title>
-                      {truncate(payload.value, tickMax)}
-                    </text>
-                  )}
-                />
-                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#f1f3f5" }} />
-                <Legend
-                  iconType="circle"
-                  verticalAlign="top"
-                  wrapperStyle={{ fontSize: "12px", paddingBottom: "8px" }}
-                />
-                <Bar dataKey="valid" stackId="a" name="Valid" fill={CERT.valid} />
-                <Bar dataKey="expiring" stackId="a" name="Expiring" fill={CERT.expiring} />
-                <Bar
-                  dataKey="expired"
-                  stackId="a"
-                  name="Expired"
-                  fill={CERT.expired}
-                  radius={[0, 3, 3, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="text-[13px] text-gray-500">No certification data</div>
-          )}
-        </div>
-      </section>
-
-      {/* ════════ Alerts — ตาราง (กดแถว → รายชื่อ) ════════ */}
+      {/* ════════ Certification — ตาราง / กราฟ ในที่เดียว ════════ */}
       <section ref={alertsRef} className="scroll-mt-16 border-b border-gray-200 py-4">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <span className={`${SECTION_HEAD} mb-0`}>
-            🔔 Auto-Scan Alerts — Expiring Certifications
-          </span>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={`${SECTION_HEAD} mb-0`}>Certification Compliance</span>
+            {/* segmented control — แบบเดียวกับหน้า Bookings */}
+            <div className="inline-flex gap-0.5 rounded-lg bg-gray-100 p-0.5" role="group" aria-label="มุมมอง">
+              <button
+                key="table"
+                type="button"
+                onClick={() => setCertView("table")}
+                aria-pressed={certView === "table"}
+                className={`cursor-pointer whitespace-nowrap rounded-md border-none px-2.5 py-1 text-xs font-semibold transition ${
+                  certView === "table"
+                    ? "bg-white text-[#2B2F78] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+                    : "bg-transparent text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                🔔 ใกล้หมด / หมดอายุ
+              </button>
+              <button
+                key="chart"
+                type="button"
+                onClick={() => setCertView("chart")}
+                aria-pressed={certView === "chart"}
+                className={`cursor-pointer whitespace-nowrap rounded-md border-none px-2.5 py-1 text-xs font-semibold transition ${
+                  certView === "chart"
+                    ? "bg-white text-[#2B2F78] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+                    : "bg-transparent text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                📊 กราฟตามประเภท
+              </button>
+            </div>
+          </div>
           <span className="text-xs text-gray-500">
-            {alertGroups.length} cert types · กดแถวเพื่อดูรายชื่อ
+            {certView === "table"
+              ? `${alertGroups.length} cert types · กดแถวเพื่อดูรายชื่อ`
+              : data.certByType.length > CHART_MAX
+                ? `แสดง ${CHART_MAX} ประเภทที่มีปัญหามากที่สุด · ครบทุกประเภทในมุมมองตาราง`
+                : "เรียงตัวที่มีปัญหา (Expired + Expiring) ไว้บนสุด"}
           </span>
         </div>
+        {certView === "table" ? (
+          <>
         {alertGroups.length === 0 ? (
           <div className="text-[13px] font-semibold text-[#198754]">
             ✅ No expiring or expired certifications
@@ -914,6 +874,70 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
+        )}
+          </>
+        ) : (
+          <>
+          {certSorted.length ? (
+            <ResponsiveContainer
+              width="100%"
+              height={Math.max(260, certSorted.length * 30)}
+            >
+              <BarChart
+                data={certSorted}
+                layout="vertical"
+                margin={{ top: 8, right: isNarrow ? 8 : 24, left: 0, bottom: 8 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#eef0f2"
+                  horizontal={false}
+                />
+                <XAxis
+                  type="number"
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: "#adb5bd" }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={yAxisWidth}
+                  interval={0}
+                  tick={({ x, y, payload }) => (
+                    <text
+                      x={x}
+                      y={y}
+                      dy={4}
+                      textAnchor="end"
+                      fontSize={11}
+                      fill="#495057"
+                    >
+                      <title>{payload.value}</title>
+                      {truncate(payload.value, tickMax)}
+                    </text>
+                  )}
+                />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "#f1f3f5" }} />
+                <Legend
+                  iconType="circle"
+                  verticalAlign="top"
+                  wrapperStyle={{ fontSize: "12px", paddingBottom: "8px" }}
+                />
+                <Bar dataKey="valid" stackId="a" name="Valid" fill={CERT.valid} />
+                <Bar dataKey="expiring" stackId="a" name="Expiring" fill={CERT.expiring} />
+                <Bar
+                  dataKey="expired"
+                  stackId="a"
+                  name="Expired"
+                  fill={CERT.expired}
+                  radius={[0, 3, 3, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-[13px] text-gray-500">No certification data</div>
+          )}
+          </>
         )}
       </section>
 
