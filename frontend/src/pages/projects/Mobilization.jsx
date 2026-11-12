@@ -729,7 +729,9 @@ export default function Mobilization() {
       // MOB / D-MOB ตั้งต้นจาก Working start / end ของ requirement (แก้ได้)
       if (isNewProject) {
         setBulkFields(projectBulkDefaults(data.project));
-        setTeamPanelPref(null); // project ใหม่ → กลับเป็นเปิด / ย่ออัตโนมัติ
+        // project ใหม่: มี Platform อยู่แล้ว → ย่ออัตโนมัติ · ยังไม่มี → เปิดค้างไว้
+        //   (กันแผงย่อทันทีตอนพิมพ์ Platform ตัวแรก — ให้ผู้ใช้กด ย่อแผง เองเมื่อกรอกเสร็จ)
+        setTeamPanelPref(nextTeam.platform?.trim() ? null : true);
       }
       teamProjectRef.current = projectId;
       teamRef.current = nextTeam;
