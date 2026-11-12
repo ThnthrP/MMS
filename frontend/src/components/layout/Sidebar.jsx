@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Search,
@@ -16,8 +16,10 @@ import { APP_MENU, findMenuEntry, visibleTabs } from "./sidebarMenu";
 // ══════════════════════════════════════════════════════════
 // Sidebar — พื้นเทาอ่อน ตัดกับเนื้อหาพื้นขาว · อยู่ใต้ Navbar (โลโก้ + MMS System ย้ายไปอยู่ที่ Navbar แล้ว)
 //   • ช่องค้นหาเมนู (ค้นทั้งชื่อเมนูและชื่อแท็บ เช่น "PE Approvals")
-//   • กดชื่อ section เพื่อพับ/กาง · ปุ่ม Collapse all / Expand all
-//   • ปุ่ม Collapse = ย่อเหลือแต่ icon (จำค่าไว้ในเบราว์เซอร์)
+//   • ใต้ช่องค้นหา: ปุ่ม Collapse (ย่อเหลือแต่ icon · จำค่าไว้ในเบราว์เซอร์) + Collapse all / Expand all (พับ/กางทุก section)
+//     — วางบนสุดคู่กับช่องค้นหา (แบบ CES) ไม่กินพื้นที่ล่างของรายการเมนู
+//   • กดชื่อ section เพื่อพับ/กาง · section ที่พับอยู่แต่มีหน้าปัจจุบัน → จุดส้มที่หัว section
+//   • โหมด icon: ปุ่ม » (ขยาย) อยู่บนสุด · กดไอคอนค้นหา = ขยาย + โฟกัสช่องค้นหาให้พิมพ์ได้ทันที
 //   • มือถือ: เลื่อนออกมาทับหน้า (open / onClose จาก Layout)
 //
 // ใช้ <Link> (แท็ก <a href>) → คลิกขวา "เปิดในแท็บใหม่", Ctrl/Cmd+คลิก ใช้ได้ปกติ
@@ -28,7 +30,13 @@ const ITEM_BASE =
 const ITEM_ACTIVE = "bg-white font-semibold text-[#c2410c] shadow-[inset_3px_0_0_#F16726]";
 const ITEM_IDLE = "text-gray-700 hover:bg-gray-200/70 hover:text-gray-900";
 
-const SECTIONS_KEY = "sidebar_collapsed_sections";
+// ปุ่มใต้ช่องค้นหา (Collapse / Collapse all) และปุ่มในโหมด icon
+const CTRL_BTN =
+  "flex-1 cursor-pointer items-center justify-center gap-1 rounded-md border border-gray-200 bg-white py-1 text-[11px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 disabled:cursor-default disabled:opacity-50";
+const RAIL_BTN =
+  "flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800";
+
+const SECTIONS_KEY ="sidebar_collapsed_sections";
 
 const readSet = () => {
   try {
@@ -58,6 +66,20 @@ const Sidebar = ({
 
   // มือถือแสดงเต็มเสมอ — ย่อเหลือ icon เฉพาะจอ md ขึ้นไป
   const rail = collapsed && !open;
+
+  // กดไอคอนค้นหาในโหมด icon → ขยายเมนูแล้วโฟกัสช่องค้นหา
+  const searchRef = useRef(null);
+  const [focusSearch, setFocusSearch] = useState(false);
+  useEffect(() => {
+    if (!rail && focusSearch) {
+      searchRef.current?.focus();
+      setFocusSearch(false);
+    }
+  }, [rail, focusSearch]);
+  const openSearch = () => {
+    setFocusSearch(true);
+    onToggleCollapsed();
+  };
 
   // กด Esc ปิดเมนู (มือถือ)
   useEffect(() => {
@@ -124,21 +146,27 @@ const Sidebar = ({
           ${rail ? "w-14" : "w-60"}
           md:sticky md:top-12 md:z-30 md:self-start md:h-[calc(100vh-3rem)] md:translate-x-0`}
       >
-        {/* ── ค้นหาเมนู ── */}
+        {/* ── ค้นหาเมนู + ปุ่มควบคุมเมนู (บนสุด) ── */}
         {rail ? (
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            title="ค้นหาเมนู"
-            className="mx-auto mt-3 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
-          >
-            <Search size={15} />
-          </button>
+          <div className="flex shrink-0 flex-col items-center gap-1.5 border-b border-gray-200 pb-2 pt-3">
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              title="ขยายเมนู"
+              className={RAIL_BTN}
+            >
+              <ChevronsRight size={15} />
+            </button>
+            <button type="button" onClick={openSearch} title="ค้นหาเมนู" className={RAIL_BTN}>
+              <Search size={15} />
+            </button>
+          </div>
         ) : (
-          <div className="shrink-0 px-3 pt-3">
+          <div className="shrink-0 border-b border-gray-200 px-3 pb-2 pt-3">
             <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 focus-within:border-[#F16726]">
               <Search size={14} className="shrink-0 text-gray-400" />
               <input
+                ref={searchRef}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && setQ("")}
@@ -156,6 +184,27 @@ const Sidebar = ({
                 </button>
               )}
             </div>
+            <div className="mt-1.5 flex gap-1.5">
+              {/* มือถือไม่มีโหมด icon → ซ่อนปุ่ม Collapse */}
+              <button
+                type="button"
+                onClick={onToggleCollapsed}
+                title="ย่อเมนูเหลือแต่ไอคอน"
+                className={`${CTRL_BTN} hidden md:flex`}
+              >
+                <ChevronsLeft size={13} /> Collapse
+              </button>
+              <button
+                type="button"
+                onClick={toggleAll}
+                disabled={searching}
+                title={searching ? "ล้างคำค้นก่อน" : allClosed ? "กางทุก section" : "พับทุก section"}
+                className={`${CTRL_BTN} flex`}
+              >
+                {allClosed ? <ChevronsUpDown size={13} /> : <ChevronsDownUp size={13} />}
+                {allClosed ? "Expand all" : "Collapse all"}
+              </button>
+            </div>
           </div>
         )}
 
@@ -170,6 +219,7 @@ const Sidebar = ({
           )}
           {groups.map((group, idx) => {
             const closed = !searching && !rail && closedSections.has(group.section);
+            const hasCurrent = closed && group.items.some(({ item }) => item === currentItem);
             return (
               <div key={group.section || idx} className={idx > 0 ? "mt-2" : ""}>
                 {rail ? (
@@ -181,7 +231,15 @@ const Sidebar = ({
                       onClick={() => toggleSection(group.section)}
                       className="flex w-full cursor-pointer items-center justify-between border-none bg-transparent px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600"
                     >
-                      {group.section}
+                      <span className="flex items-center gap-1.5">
+                        {group.section}
+                        {hasCurrent && (
+                          <span
+                            title={`หน้าปัจจุบันอยู่ในหมวดนี้ (${currentItem.name})`}
+                            className="h-1.5 w-1.5 rounded-full bg-[#F16726]"
+                          />
+                        )}
+                      </span>
                       <ChevronDown
                         size={13}
                         className={`transition-transform ${closed ? "-rotate-90" : ""}`}
@@ -229,34 +287,6 @@ const Sidebar = ({
             );
           })}
         </nav>
-
-        {/* ── ปุ่มด้านล่าง ── */}
-        <div
-          className={`flex shrink-0 gap-1.5 border-t border-gray-200 p-2 ${rail ? "flex-col items-center" : ""}`}
-        >
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            title={rail ? "ขยายเมนู" : "ย่อเมนูเหลือแต่ไอคอน"}
-            className={`hidden cursor-pointer items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white py-1.5 text-xs text-gray-600 hover:bg-gray-50 md:flex ${
-              rail ? "w-9" : "flex-1"
-            }`}
-          >
-            {rail ? <ChevronsRight size={15} /> : <><ChevronsLeft size={14} /> Collapse</>}
-          </button>
-          {!rail && (
-            <button
-              type="button"
-              onClick={toggleAll}
-              disabled={searching}
-              title={allClosed ? "กางทุก section" : "พับทุก section"}
-              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-gray-200 bg-white py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
-            >
-              {allClosed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
-              {allClosed ? "Expand all" : "Collapse all"}
-            </button>
-          )}
-        </div>
       </aside>
     </>
   );
