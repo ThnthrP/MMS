@@ -6,6 +6,8 @@ import { useState } from "react";
 //   variant="bar"  : จอเล็กกว่า xl — แถบเดียวพับได้เหนือรายการ (ไม่ดันรายการลงไปมาก)
 // items: [{ id, name, sub?, badge?, hidden? }]  hidden = ถูกตัวกรองซ่อนอยู่
 // แสดงคนที่เลือกล่าสุดไว้บนสุด
+// maxHeight (ไม่บังคับ) = ความสูงสูงสุดของแผงทั้งอัน (รวมหัว) เช่น "calc(100vh - 250px)"
+//   ใช้ค่าเดียวกับกรอบตารางข้าง ๆ → ตารางกับแผงยาวเท่ากันเสมอ · ไม่ส่ง = ใช้ listMaxHeight แบบเดิม
 // ══════════════════════════════════════════════════════════
 export default function SelectedPeoplePanel({
   variant = "side",
@@ -14,6 +16,7 @@ export default function SelectedPeoplePanel({
   onClear,
   disabled = false,
   listMaxHeight = "max-h-[480px]",
+  maxHeight,
   emptyText = "ยังไม่ได้เลือก — ติ๊ก ☐ หน้าชื่อพนักงานในรายการ",
 }) {
   const [open, setOpen] = useState(false);
@@ -99,8 +102,13 @@ export default function SelectedPeoplePanel({
 
   // ── xl+: แผงด้านขวา ──
   return (
-    <aside className="sticky top-3 hidden self-start overflow-hidden rounded-lg border border-gray-200 bg-white xl:block">
-      <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2.5">
+    <aside
+      style={maxHeight ? { maxHeight } : undefined}
+      className={`sticky top-3 hidden self-start overflow-hidden rounded-lg border border-gray-200 bg-white ${
+        maxHeight ? "xl:flex xl:flex-col" : "xl:block"
+      }`}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2.5">
         <div className="min-w-0">
           <div className="text-[13px] font-bold text-gray-900">
             เลือกไว้ <span className="text-blue-600">{items.length}</span> คน
@@ -114,7 +122,7 @@ export default function SelectedPeoplePanel({
       {items.length === 0 ? (
         <div className="px-3 py-6 text-center text-xs text-gray-400">{emptyText}</div>
       ) : (
-        <div className={`${listMaxHeight} overflow-y-auto`}>{list}</div>
+        <div className={`${maxHeight ? "min-h-0 flex-1" : listMaxHeight} overflow-y-auto`}>{list}</div>
       )}
     </aside>
   );

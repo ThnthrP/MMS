@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useContext, useMemo, useRef } from "react";
+import { useState, useEffect, useContext, useMemo } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import Select from "react-select";
@@ -63,6 +63,10 @@ const STICKY_TH =
   "sticky top-0 z-[1] whitespace-nowrap bg-gray-50 px-3.5 py-2.5 text-left text-[11px] font-semibold text-gray-500 shadow-[inset_0_-1px_0_#e5e7eb]";
 const isInteractive = (e) => !!e.target.closest("a,button,input,select,label");
 
+// ความสูงสูงสุดของ "ตารางรายชื่อ" และ "แผงที่เลือกไว้" ด้านขวา — ค่าเดียวกัน จึงยาวเท่ากันเสมอ
+//   (เดิมตารางวัดความสูงตอนโหลดหน้า ซึ่งตารางยังอยู่ต่ำ → ได้แค่ 320px สั้นกว่าแผงมาก)
+const LIST_MAX_H = "calc(100vh - 250px)";
+
 const SELECT_STYLES = {
   control: (p) => ({
     ...p,
@@ -120,9 +124,6 @@ export default function RequestMedical() {
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
-
-  const tableBoxRef = useRef(null);
-  const [tableMaxH, setTableMaxH] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -238,18 +239,6 @@ export default function RequestMedical() {
   // เหตุผล + client ต่อคน → แนบไปกับคำขอ (หน้า Medical Bookings แสดงเป็น ❌ หมดอายุ / ⏰ ใกล้หมดอายุ / ⚪ ไม่มีข้อมูล)
   const reasonById = Object.fromEntries(selectedIds.map((id) => [id, requestReason(rowById.get(id)?.bucket)]));
   const clientById = Object.fromEntries(selectedIds.map((id) => [id, clientNameOf(rowById.get(id)?.w)]));
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = tableBoxRef.current;
-      if (!el || el.offsetParent === null) return;
-      const top = el.getBoundingClientRect().top;
-      setTableMaxH(Math.max(320, Math.floor(window.innerHeight - top - 24)));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [loading, hasFilter, filtered.length, selectedIds.length > 0]);
 
   const rowBg = (r) =>
     r.requested ? "bg-gray-50" : selectedIds.includes(r.w.id) ? "bg-[#fffbe6]" : "bg-white";
@@ -583,11 +572,7 @@ export default function RequestMedical() {
               </div>
 
               {/* ── lg+: ตาราง (หัวคอลัมน์ตรึงไว้) ── */}
-              <div
-                ref={tableBoxRef}
-                style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
-                className="hidden max-h-[calc(100vh-240px)] overflow-auto lg:block"
-              >
+              <div style={{ maxHeight: LIST_MAX_H }} className="hidden overflow-auto lg:block">
                 <table className="w-full border-collapse text-[13px]">
                   <thead>
                     <tr>
@@ -649,7 +634,7 @@ export default function RequestMedical() {
               items={selectedItems}
               onRemove={toggle}
               onClear={() => setSelectedIds([])}
-              listMaxHeight="max-h-[calc(100vh-300px)]"
+              maxHeight={LIST_MAX_H}
             />
           </div>
         </>
