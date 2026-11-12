@@ -793,8 +793,28 @@ function BookingsPage({ requestType }) {
       </div>
 
       {/* ════════ สรุป + เลือกหลายคน ════════ */}
+      {/* สลับมุมมองอยู่ซ้ายสุดเสมอ — ไม่ขยับตอนสลับ (ปุ่ม Confirm / Reject ด้านขวามีเฉพาะมุมมองรายคน) */}
       <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
+          {/* สลับมุมมอง: รายคน / รวมตามคำขอ */}
+          <div className="mr-1.5 inline-flex shrink-0 overflow-hidden rounded-md border border-gray-200" role="group" aria-label="มุมมอง">
+            {[
+              ["person", "👤 รายคน"],
+              ["request", "📋 รวมตามคำขอ"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setView(key)}
+                aria-pressed={view === key}
+                className={`cursor-pointer whitespace-nowrap border-none px-2.5 py-1 text-xs font-semibold ${
+                  view === key ? "bg-[#2B2F78] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {SUMMARY_CHIPS.map(([key, label, cls]) => (
             <button
               key={key}
@@ -821,27 +841,8 @@ function BookingsPage({ requestType }) {
             )}
           </span>
         </div>
+        {!isGrouped && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {/* สลับมุมมอง: รายคน / รวมตามคำขอ */}
-          <div className="mr-1 inline-flex overflow-hidden rounded-md border border-gray-200" role="group" aria-label="มุมมอง">
-            {[
-              ["person", "👤 รายคน"],
-              ["request", "📋 รวมตามคำขอ"],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setView(key)}
-                aria-pressed={view === key}
-                className={`cursor-pointer whitespace-nowrap border-none px-2.5 py-1 text-xs font-semibold ${
-                  view === key ? "bg-[#2B2F78] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {!isGrouped && (
             <>
           {/* มือถือไม่มีหัวตาราง — ใช้ checkbox นี้แทน */}
           <label className="mr-1 flex cursor-pointer items-center gap-2 text-[13px] text-gray-700 lg:hidden">
@@ -889,8 +890,8 @@ function BookingsPage({ requestType }) {
             ✕ Reject selected
           </button>
             </>
-          )}
         </div>
+        )}
       </div>
 
       {/* ════════ รายการ ════════ */}
