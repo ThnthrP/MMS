@@ -614,6 +614,9 @@ export default function Mobilization() {
 
   // ── ข้อมูลการเดินทางของทีม ──
   const [team, setTeam] = useState(EMPTY_TEAM);
+  // แผง "กรอกให้ทุกคน" เปิด / ย่อ — null = อัตโนมัติ (เปิดเมื่อยังไม่กรอก Platform หรือมีวันที่ยังไม่ได้กดใช้)
+  //   ย่อแล้วเหลือบรรทัดสรุปเดียว → เห็นตารางรายชื่อโดยไม่ต้องเลื่อน · กดหัวแผงเพื่อเปิด / ย่อเอง
+  const [teamPanelPref, setTeamPanelPref] = useState(null);
   const teamRef = useRef(EMPTY_TEAM); // ค่าล่าสุดสำหรับ fetchList
   const teamProjectRef = useRef(null); // project ที่ team เป็นของ
 
@@ -724,7 +727,10 @@ export default function Mobilization() {
         ? seedTeam(freshRows, data.project)
         : withProjectTeam(teamRef.current, data.project);
       // MOB / D-MOB ตั้งต้นจาก Working start / end ของ requirement (แก้ได้)
-      if (isNewProject) setBulkFields(projectBulkDefaults(data.project));
+      if (isNewProject) {
+        setBulkFields(projectBulkDefaults(data.project));
+        setTeamPanelPref(null); // project ใหม่ → กลับเป็นเปิด / ย่ออัตโนมัติ
+      }
       teamProjectRef.current = projectId;
       teamRef.current = nextTeam;
       setTeam(nextTeam);
@@ -1234,6 +1240,9 @@ export default function Mobilization() {
     () => rows.filter((r) => !r.deployed).length,
     [rows],
   );
+  // ยังไม่กรอก Platform (บังคับ) → เปิดค้างไว้เสมอ ย่อไม่ได้ (ไม่งั้นกด Deploy แล้วหาช่องไม่เจอ)
+  const teamPlatformMissing = !team.platform?.trim();
+  const teamPanelOpen = teamPlatformMissing || (teamPanelPref ?? bulkWouldChange);
   const applyBulkFields = () => {
     if (!bulkHasValue || bulkFieldTargets.length === 0) return;
     const patch = Object.fromEntries(
@@ -2049,25 +2058,108 @@ export default function Mobilization() {
             ปุ่ม 🦺 หัวข้ออบรม อยู่หัวแผง (ใช้กับคนที่แสดงอยู่เหมือนแถว 2) */}
         {hasRows && canManageMobilization && teamTargetCount > 0 && (
           <div className="border-b border-gray-100 bg-gray-50/60 px-2.5 py-2.5">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
-                กรอกให้ทุกคน · พนักงานที่ยังไม่ Deploy {teamTargetCount} คน
-                <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
-                  — บันทึกเป็นประวัติลงงานใน CV ตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
+            <div className={`flex flex-wrap items-center justify-between gap-2 ${teamPanelOpen ? "mb-2" : ""}`}>
+              <button
+                type="button"
+                onClick={() => !teamPlatformMissing && setTeamPanelPref(!teamPanelOpen)}
+                aria-expanded={teamPanelOpen}
+                title={teamPanelOpen ? "ย่อแผง — เหลือบรรทัดสรุป" : "เปิดแผงเพื่อแก้ไข"}
+                className="flex min-w-0 cursor-pointer items-start gap-1.5 border-none bg-transparent p-0 text-left"
+              >
+                {!teamPlatformMissing && (
+                  <span className="mt-px text-[10px] text-gray-400">{teamPanelOpen ? "▼" : "▶"}</span>
+                )}
+                <span className="text-[11px] font-semibold uppercase tracking-[0.4px] text-gray-500">
+                  กรอกให้ทุกคน · พนักงานที่ยังไม่ Deploy {teamTargetCount} คน
+                  <span className="ml-1 font-normal normal-case tracking-normal text-gray-400">
+                    — บันทึกเป็นประวัติลงงานใน CV ตอนกด Deploy · คนที่ Deploy แล้วคงค่าเดิม
+                  </span>
                 </span>
+              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {!teamPlatformMissing && (
+                  <button
+                    type="button"
+                    onClick={() => setTeamPanelPref(!teamPanelOpen)}
+                    className="cursor-pointer whitespace-nowrap rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    {teamPanelOpen ? "ย่อแผง ▲" : "✏️ แก้ไข"}
+                  </button>
+                )}
+                {bulkFieldTargets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setBulkOpen(true)}
+                    aria-haspopup="dialog"
+                    className={`cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
+                  >
+                    🦺 หัวข้ออบรม ({bulkFieldTargets.length} คน)
+                  </button>
+                )}
               </div>
-              {bulkFieldTargets.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setBulkOpen(true)}
-                  aria-haspopup="dialog"
-                  className={`cursor-pointer whitespace-nowrap rounded-lg border-none px-3 py-1.5 text-xs font-bold transition-all ${LIFT_BLUE_SOFT}`}
-                >
-                  🦺 หัวข้ออบรม ({bulkFieldTargets.length} คน)
-                </button>
-              )}
             </div>
 
+            {/* ย่ออยู่ → สรุปค่าที่ใช้กับทุกคน มีชื่อช่องกำกับ (กดเพื่อเปิดแก้)
+                ช่องที่ยังไม่กรอก = "—" สีแดง + ป้าย "ยังไม่กรอก N ช่อง" */}
+            {!teamPanelOpen && (() => {
+              const items = [
+                ["Traveling Team No. (ON Number)", team.travelTeamNo],
+                ["Project", project?.name],
+                ...TEAM_FIELDS.filter(([k]) => k !== "travelTeamNo").map(([k, label]) => [label, team[k]]),
+              ];
+              const missing = items.filter(([, v]) => !String(v || "").trim()).map(([label]) => label);
+              const showDates = bulkFieldTargets.length > 0;
+              const dateItems = [
+                ["MOB (วันลงงาน)", fmtShort(bulkFields.mobDate)],
+                ["D-MOB (วันเดินทางกลับ)", fmtShort(bulkFields.demobDate)],
+              ];
+              const missingDates = showDates ? dateItems.filter(([, v]) => !v).map(([l]) => l) : [];
+              const allMissing = [...missing, ...missingDates];
+              const field = ([label, v]) => (
+                <span key={label} className="whitespace-nowrap">
+                  <span className="text-gray-500">{label}:</span>{" "}
+                  {String(v || "").trim() ? (
+                    <b className="font-semibold text-gray-800">{v}</b>
+                  ) : (
+                    <b className="font-semibold text-[#dc3545]">—</b>
+                  )}
+                </span>
+              );
+              const sep = <span className="text-gray-300">·</span>;
+              const join = (arr) => arr.flatMap((it, i) => (i ? [<span key={`s${i}`}>{sep}</span>, field(it)] : [field(it)]));
+              return (
+                <button
+                  type="button"
+                  onClick={() => setTeamPanelPref(true)}
+                  title="กดเพื่อแก้ไข"
+                  className="mt-1.5 w-full cursor-pointer rounded-md border border-dashed border-gray-200 bg-white px-2.5 py-1.5 text-left text-xs hover:border-gray-300"
+                >
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <b className="text-gray-500">①</b>
+                    {join(items)}
+                  </div>
+                  {showDates && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      <b className="text-gray-500">②</b>
+                      {join(dateItems)}
+                      {bulkWouldChange && (
+                        <span className="ml-1 rounded bg-[#fff3cd] px-1.5 py-0.5 text-[11px] font-semibold text-[#664d03]">
+                          ⚠ วันในแผงยังไม่ได้กดใช้
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {allMissing.length > 0 && (
+                    <div className="mt-1 text-[11px] font-semibold text-[#dc3545]">
+                      ยังไม่กรอก {allMissing.length} ช่อง: {allMissing.join(", ")} — กดที่นี่หรือ ✏️ แก้ไข เพื่อกรอก
+                    </div>
+                  )}
+                </button>
+              );
+            })()}
+
+            {teamPanelOpen && (
+            <>
             {/* แถว 1: การเดินทางของทีม */}
             <div className={BULK_SUB}>
               ① การเดินทาง
@@ -2150,6 +2242,8 @@ export default function Mobilization() {
                   </button>
                 </div>
               </>
+            )}
+            </>
             )}
           </div>
         )}
