@@ -45,11 +45,63 @@ const ICON_BTN =
 const ICON_VIEW = `${ICON_BTN} bg-white shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08)] hover:shadow-[0_3px_6px_rgba(0,0,0,0.2),0_2px_3px_rgba(0,0,0,0.1)]`;
 const ICON_EDIT = `${ICON_BTN} bg-[#e7f1ff] text-blue-600 shadow-[0_1px_3px_rgba(13,110,253,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(13,110,253,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
-const FIELD =
-  "box-border h-9 rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
 const TH =
   "sticky top-0 z-[1] bg-white px-4 py-2.5 text-[11px] font-semibold text-gray-500 shadow-[inset_0_-1px_0_#f1f3f5]";
 const DASH = <span className="text-gray-400">—</span>;
+
+// ── แถบตัวกรอง — หน้าตาเดียวกับหน้า Workers (label ด้านบน · placeholder สีจาง · ไม่เลือก = ทั้งหมด) ──
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
+const FILTER_SELECT_STYLES = {
+  control: (p) => ({
+    ...p,
+    borderColor: "#dee2e6",
+    borderRadius: "8px",
+    minHeight: "36px",
+    fontSize: "13px",
+    boxShadow: "none",
+    "&:hover": { borderColor: "#86b7fe" },
+  }),
+  option: (p) => ({ ...p, fontSize: "13px" }),
+  placeholder: (p) => ({ ...p, fontSize: "13px", color: "#6c757d" }),
+  menuPortal: (p) => ({ ...p, zIndex: 50 }), // ลอยเหนือหัวตาราง sticky
+};
+const FILTER_MENU_PORTAL = {
+  menuPortalTarget: typeof document !== "undefined" ? document.body : null,
+  menuPosition: "fixed",
+};
+const SETUP_OPTIONS = [
+  { value: "set", label: "Set" },
+  { value: "unset", label: "⚠ Not set" },
+];
+const CERT_OPTIONS = [
+  { value: "has", label: "มีพนักงานถือ cert" },
+  { value: "none", label: "ไม่มีใครถือ (0 คน)" },
+];
+const CHEVRON_OPTIONS = [
+  { value: "used", label: "ใช้ใน Chevron" },
+  { value: "unused", label: "ไม่ได้ใช้" },
+];
+
+// ตัวเลือก training: "ชื่อกลาง : ชื่อในไฟล์ HR" (ชื่อในไฟล์แสดงเฉพาะเมื่อต่างจากชื่อกลาง)
+//   ค้นได้ทั้งสองชื่อ ไม่สนตัวพิมพ์เล็ก/ใหญ่ และช่องว่าง
+const hrName = (t) => (t.fullName && t.fullName !== t.name ? t.fullName : "");
+const normSearch = (v) => String(v || "").toLowerCase().replace(/\s+/g, " ").trim();
+const filterTrainingOption = (option, input) => {
+  const q = normSearch(input);
+  if (!q) return true;
+  return normSearch(`${option.data.name} ${option.data.hrName}`).includes(q);
+};
+// เมนู: ชื่อกลางตัวหนา + ชื่อในไฟล์ HR บรรทัดล่าง · ในช่องที่เลือกแล้ว: บรรทัดเดียว
+const formatTrainingOption = (o, { context }) =>
+  context === "value" ? (
+    o.label
+  ) : (
+    <div className="leading-snug">
+      <div className="font-semibold">{o.name}</div>
+      {o.hrName && <div className="text-[11px] text-gray-500">ชื่อในไฟล์ HR: {o.hrName}</div>}
+    </div>
+  );
 
 // ══════════════════════════════════════════════════════════
 // small components (อยู่นอก component หลัก)
@@ -456,8 +508,7 @@ export default function ManageTrainings() {
 
   // ----- list -----
   const [trainings, setTrainings] = useState([]);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [trainingFilter, setTrainingFilter] = useState(""); // GlobalTraining.id — เลือกจาก dropdown
   const [loadingList, setLoadingList] = useState(true);
   const [listMsg, setListMsg] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -498,12 +549,6 @@ export default function ManageTrainings() {
   // ----- ตรวจชื่อ cert (กดตัวเลขพนักงานที่มี cert) -----
   const [certsTraining, setCertsTraining] = useState(null);
 
-  // ── ค้นหา: รอพิมพ์หยุด 300ms ค่อยยิง API (เดิมยิงทุกตัวอักษร) ──
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
-
   // ข้อความสำเร็จหายเองใน 3 วินาที
   useEffect(() => {
     if (listMsg?.type !== "ok") return;
@@ -513,10 +558,10 @@ export default function ManageTrainings() {
 
   const loadTrainings = useCallback(async () => {
     try {
-      // แสดง "Loading..." เฉพาะครั้งแรก — ตอนค้นหา/รีเฟรช ตารางเดิมค้างไว้ ไม่กะพริบ
+      // แสดง "Loading..." เฉพาะครั้งแรก — ตอนรีเฟรช ตารางเดิมค้างไว้ ไม่กะพริบ
+      // โหลดครบทุกตัวครั้งเดียว — ค้นหา/กรองฝั่ง frontend (dropdown training ต้องมีตัวเลือกครบ)
       if (firstLoadRef.current) setLoadingList(true);
       const res = await axios.get(`${backendUrl}/api/global-trainings`, {
-        params: { search: debouncedSearch || undefined },
         withCredentials: true,
       });
       setTrainings(res.data || []);
@@ -527,7 +572,7 @@ export default function ManageTrainings() {
       setLoadingList(false);
       firstLoadRef.current = false;
     }
-  }, [backendUrl, debouncedSearch]);
+  }, [backendUrl]);
 
   useEffect(() => {
     loadTrainings();
@@ -895,6 +940,7 @@ export default function ManageTrainings() {
     const chevron = !!t.clientUsage?.find(
       (u) => (u.name || "").toUpperCase() === "CHEVRON",
     );
+    if (trainingFilter && t.id !== trainingFilter) return false;
     if (sourceFilter && t.standard?.sourceName !== sourceFilter) return false;
     if (setupFilter === "set" && !isSet) return false;
     if (setupFilter === "unset" && isSet) return false;
@@ -905,14 +951,25 @@ export default function ManageTrainings() {
     return true;
   });
   const hasFilter =
-    search || sourceFilter || setupFilter || certFilter || chevronFilter;
+    trainingFilter || sourceFilter || setupFilter || certFilter || chevronFilter;
   const resetFilters = () => {
-    setSearch("");
+    setTrainingFilter("");
     setSourceFilter("");
     setSetupFilter("");
     setCertFilter("");
     setChevronFilter("");
   };
+
+  const trainingOptions = trainings
+    .map((t) => ({
+      value: t.id,
+      name: t.name,
+      hrName: hrName(t),
+      label: hrName(t) ? `${t.name} : ${hrName(t)}` : t.name,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const sourceOptions = sources.map((s) => ({ value: s.name, label: s.name }));
+  const pick = (opts, v) => opts.find((o) => o.value === v) || null;
 
   const panelOpen = selectedId !== null;
   const isEditing = mode === "edit";
@@ -948,9 +1005,22 @@ export default function ManageTrainings() {
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
       {/* ════════ Header ════════ */}
       <div className="flex flex-col gap-2 pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 text-xs text-gray-500">
-          จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training ต่อ
-          1 standard
+        <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+          <span>
+            จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training ต่อ
+            1 standard
+          </span>
+          {!loadingList && (
+            <span>
+              ทั้งหมด <b className="text-gray-900">{trainings.length}</b> รายการ
+              {hasFilter && (
+                <>
+                  {" "}
+                  · พบ <b className="text-blue-700">{shownTrainings.length}</b>
+                </>
+              )}
+            </span>
+          )}
         </div>
         <button
           className={`${BTN_PRIMARY} w-full shrink-0 sm:w-auto`}
@@ -960,79 +1030,91 @@ export default function ManageTrainings() {
         </button>
       </div>
 
-      {/* ════════ Search & Filter — แถวเดียว คั่นด้วยเส้น ════════ */}
-      <div className="flex flex-wrap items-center gap-2 border-y border-gray-200 py-3">
-        <input
-          type="text"
-          placeholder="🔍 ค้นหา training (ชื่อกลาง / ชื่อในไฟล์ HR) เช่น Rigging, H2S..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={`${FIELD} min-w-[240px] flex-1`}
-        />
-        <select
-          value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value)}
-          className={FIELD}
-          title="Source"
-        >
-          <option value="">Source: ทั้งหมด</option>
-          {sources.map((src) => (
-            <option key={src.id} value={src.name}>
-              {src.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={setupFilter}
-          onChange={(e) => setSetupFilter(e.target.value)}
-          className={FIELD}
-          title="Set up?"
-        >
-          <option value="">Set up: ทั้งหมด</option>
-          <option value="set">Set</option>
-          <option value="unset">⚠ Not set</option>
-        </select>
-        <select
-          value={certFilter}
-          onChange={(e) => setCertFilter(e.target.value)}
-          className={FIELD}
-          title="พนักงานที่มี cert"
-        >
-          <option value="">Cert: ทั้งหมด</option>
-          <option value="has">มีพนักงานถือ cert</option>
-          <option value="none">ไม่มีใครถือ (0 คน)</option>
-        </select>
-        <select
-          value={chevronFilter}
-          onChange={(e) => setChevronFilter(e.target.value)}
-          className={FIELD}
-          title="Chevron"
-        >
-          <option value="">Chevron: ทั้งหมด</option>
-          <option value="used">ใช้ใน Chevron</option>
-          <option value="unused">ไม่ได้ใช้</option>
-        </select>
-        {!loadingList && (
-          <span className="flex items-center gap-2 whitespace-nowrap text-xs text-gray-500">
-            {hasFilter ? (
-              <>
-                พบ{" "}
-                <strong className="text-gray-900">
-                  {shownTrainings.length}
-                </strong>{" "}
-                จาก {trainings.length}
-                <button
-                  onClick={resetFilters}
-                  className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
-                >
-                  ✕ ล้าง filter
-                </button>
-              </>
-            ) : (
-              <>ทั้งหมด {trainings.length} รายการ</>
+      {/* ════════ Search & Filter — label กำกับทุกช่อง คั่นด้วยเส้น ════════
+          มือถือ 1 / sm 2 / lg+ 5 ช่องในแถวเดียว (ช่อง Training กว้างสุด) */}
+      <div className="grid grid-cols-1 gap-3 border-y border-gray-200 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))]">
+        <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+          <label className={FILTER_LABEL}>
+            Training{" "}
+            <span className="normal-case tracking-normal text-gray-400">
+              (ชื่อกลาง / ชื่อในไฟล์ HR)
+            </span>
+          </label>
+          <Select
+            options={trainingOptions}
+            value={pick(trainingOptions, trainingFilter)}
+            onChange={(o) => setTrainingFilter(o ? o.value : "")}
+            filterOption={filterTrainingOption}
+            formatOptionLabel={formatTrainingOption}
+            placeholder="🔍 ค้นหาด้วยชื่อกลาง หรือชื่อในไฟล์ HR เช่น Rigging, H2S..."
+            isClearable
+            styles={FILTER_SELECT_STYLES}
+            {...FILTER_MENU_PORTAL}
+            noOptionsMessage={() => "ไม่พบ training"}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>Source</label>
+          <Select
+            options={sourceOptions}
+            value={pick(sourceOptions, sourceFilter)}
+            onChange={(o) => setSourceFilter(o ? o.value : "")}
+            placeholder="All Sources"
+            isClearable
+            styles={FILTER_SELECT_STYLES}
+            {...FILTER_MENU_PORTAL}
+            noOptionsMessage={() => "ไม่พบ source"}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>Set up</label>
+          <Select
+            options={SETUP_OPTIONS}
+            value={pick(SETUP_OPTIONS, setupFilter)}
+            onChange={(o) => setSetupFilter(o ? o.value : "")}
+            placeholder="All"
+            isClearable
+            isSearchable={false}
+            styles={FILTER_SELECT_STYLES}
+            {...FILTER_MENU_PORTAL}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>พนักงานที่มี cert</label>
+          <Select
+            options={CERT_OPTIONS}
+            value={pick(CERT_OPTIONS, certFilter)}
+            onChange={(o) => setCertFilter(o ? o.value : "")}
+            placeholder="All"
+            isClearable
+            isSearchable={false}
+            styles={FILTER_SELECT_STYLES}
+            {...FILTER_MENU_PORTAL}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={`${FILTER_LABEL} flex items-center justify-between`}>
+            <span>Chevron</span>
+            {hasFilter && (
+              <button
+                onClick={resetFilters}
+                className="cursor-pointer border-none bg-transparent p-0 text-[11px] font-semibold normal-case tracking-normal text-[#dc3545] underline"
+              >
+                ✕ ล้างทั้งหมด
+              </button>
             )}
-          </span>
-        )}
+          </label>
+          <Select
+            options={CHEVRON_OPTIONS}
+            value={pick(CHEVRON_OPTIONS, chevronFilter)}
+            onChange={(o) => setChevronFilter(o ? o.value : "")}
+            placeholder="All"
+            isClearable
+            isSearchable={false}
+            styles={FILTER_SELECT_STYLES}
+            {...FILTER_MENU_PORTAL}
+          />
+        </div>
       </div>
 
       {listMsg && (
@@ -1097,7 +1179,7 @@ export default function ManageTrainings() {
             </div>
 
             {/* ── lg+: ตาราง ── */}
-            <div className="hidden max-h-[calc(100vh-270px)] overflow-auto lg:block">
+            <div className="hidden max-h-[calc(100vh-290px)] overflow-auto lg:block">
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr>
