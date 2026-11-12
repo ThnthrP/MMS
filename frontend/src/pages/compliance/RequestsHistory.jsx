@@ -796,8 +796,9 @@ function BookingsPage({ requestType }) {
       {/* สลับมุมมองอยู่ซ้ายสุดเสมอ — ไม่ขยับตอนสลับ (ปุ่ม Confirm / Reject ด้านขวามีเฉพาะมุมมองรายคน) */}
       <div className="flex flex-wrap items-center justify-between gap-2 py-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          {/* สลับมุมมอง: รายคน / รวมตามคำขอ */}
-          <div className="mr-1.5 inline-flex shrink-0 overflow-hidden rounded-md border border-gray-200" role="group" aria-label="มุมมอง">
+          {/* สลับมุมมอง: รายคน / รวมตามคำขอ — แบบ segmented control (ราง เทา + ช่องที่เลือกพื้นขาว)
+              ไม่ใช้ navy ทึบ เพราะ navy ทึบ = ปุ่มกดทำงาน (Request medical, เลขหน้า, ตัวกรองวันที่) */}
+          <div className="mr-1.5 inline-flex shrink-0 gap-0.5 rounded-lg bg-gray-100 p-0.5" role="group" aria-label="มุมมอง">
             {[
               ["person", "👤 รายคน"],
               ["request", "📋 รวมตามคำขอ"],
@@ -807,8 +808,10 @@ function BookingsPage({ requestType }) {
                 type="button"
                 onClick={() => setView(key)}
                 aria-pressed={view === key}
-                className={`cursor-pointer whitespace-nowrap border-none px-2.5 py-1 text-xs font-semibold ${
-                  view === key ? "bg-[#2B2F78] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                className={`cursor-pointer whitespace-nowrap rounded-md border-none px-2.5 py-1 text-xs font-semibold transition ${
+                  view === key
+                    ? "bg-white text-[#2B2F78] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+                    : "bg-transparent text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {label}
