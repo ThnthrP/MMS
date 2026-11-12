@@ -83,10 +83,21 @@ what the UI shows; restricting users to their own clients
 ### Overview
 
 #### 🏠 My Dashboard
-KPIs, pending work (unfilled positions, PE approvals, projects starting in 30
-days, bookings awaiting HR, D-MOB in 7 days), worker status, and certification
-compliance by type.
-![My Dashboard](screenshots/dashboard.png)
+KPIs and pending work: unfilled positions, PE approvals, requirements starting
+in 30 days, bookings awaiting HR, D-MOB in 7 days, and worker status
+(mobilization / availability).
+![My Dashboard — KPIs and pending work](screenshots/dashboard-1.png)
+
+Certification compliance in one section with two views: a table of expired /
+expiring certificates per type (click a row for the worker list) and a chart
+by type. The chosen view is remembered per browser.
+
+<table>
+  <tr>
+    <td><img src="screenshots/dashboard-2.png" alt="Dashboard — certification table"><br><sub>Table: expired / expiring per type</sub></td>
+    <td><img src="screenshots/dashboard-3.png" alt="Dashboard — certification chart"><br><sub>Chart: compliance by type</sub></td>
+  </tr>
+</table>
 
 #### 🛡️ Compliance Center
 Click a status count to filter; training alerts and medical status in separate
@@ -331,9 +342,10 @@ the top and the search icon expands the sidebar with the cursor in the search bo
 - **My Dashboard:** total workers, ready for deployment, currently on-site
   (live from `Assignment` records), and certification alerts; a pending-work
   panel with direct links (unfilled positions, PE approvals, projects starting
-  in 30 days, training/medical bookings awaiting HR, D-MOB in 7 days); worker
-  status and certification compliance charts. Panels a role cannot access are
-  hidden
+  in 30 days, training/medical bookings awaiting HR, D-MOB in 7 days, worker
+  status); one certification section that switches between a table of
+  expired / expiring certificates (click a row for names) and a chart by type.
+  Panels a role cannot access are hidden
 - **Compliance Center:** worker-centric overview that keeps training alerts
   and medical status in separate columns, click-to-filter status counts, plus
   client requirement gap analysis (Mandatory / Assigned / Others) and PE
