@@ -145,10 +145,20 @@ Workers below 100% match, grouped by project and position, approved or rejected 
 
 #### 📅 Manpower Calendar
 Projects with staffing progress and each worker's timeline, used to check
-availability. The list scrolls under a fixed header; each row has
-**Timeline** (detail page), **Requirement** (edit positions, headcount, dates),
-and 🗑 for projects the signed-in admin may delete.
-![Manpower Calendar](screenshots/manpower-calendar.png)
+availability. Two views, remembered per browser: a **table** that scrolls under
+a fixed header (each row has **Timeline** (detail page), **Requirement** (edit
+positions, headcount, dates), and 🗑 for projects the signed-in admin may
+delete), and a **Timeline** (Gantt) with one bar per requirement over its work
+period. The bar's fill is deployed / needed workers; green = fully staffed,
+orange = starts within 14 days and still short of people. Requirements without
+dates are listed below the timeline.
+
+<table>
+  <tr>
+    <td><img src="screenshots/manpower-calendar.png" alt="Manpower Calendar — table"><br><sub>Table</sub></td>
+    <td><img src="screenshots/manpower-calendar-timeline.png" alt="Manpower Calendar — timeline"><br><sub>Timeline: one bar per requirement</sub></td>
+  </tr>
+</table>
 
 #### 🧭 Manpower Calendar › Requirement Detail
 One page per requirement: a 10-step timeline (Requirement → Review) computed
@@ -196,8 +206,17 @@ Training rounds in progress, upcoming, and recently ended, with who attends
 each round. Filter by course, training center, or worker. Each round can add
 people, change dates / location for everyone, remove an attendee, or open
 **✓ บันทึกผลอบรม**. Rounds confirmed without dates use the requested dates and
-show a "วันที่ตามคำขอ" badge until HR sets them.
-![Training Calendar](screenshots/training-calendar.png)
+show a "วันที่ตามคำขอ" badge (a dashed bar in the calendar) until HR sets them.
+Two views, remembered per browser: a **list** and a **month calendar** (pick the
+month and year, or step with ◀ ▶; earlier months show past rounds). Click a bar
+to open the round with its attendees and actions.
+
+<table>
+  <tr>
+    <td><img src="screenshots/training-calendar.png" alt="Training Calendar — list"><br><sub>List</sub></td>
+    <td><img src="screenshots/training-calendar-month.png" alt="Training Calendar — month"><br><sub>Month calendar</sub></td>
+  </tr>
+</table>
 
 #### ➕ Add Training Plan
 Create a training round directly (course, dates, training center, workers)
@@ -378,7 +397,13 @@ the top and the search icon expands the sidebar with the cursor in the search bo
   the current step and progress dots, used to check availability before
   assigning names. Rows link to the detail page (Timeline), the Requirement
   page (Requirement), and project deletion (🗑, see
-  [Deleting a project](#deleting-a-project)). The detail page shows:
+  [Deleting a project](#deleting-a-project)). A view toggle switches between
+  the table and a **Timeline** (Gantt): one bar per requirement, filled by
+  deployed / needed workers, colored green (fully staffed) or orange (starts
+  within 14 days, not fully staffed), with a line for today. The time axis
+  follows the date filter (or spans every requirement when none is set);
+  requirements without dates are listed separately. Frontend only, from the
+  same `projects-overview` data. The detail page shows:
   - *Timeline (10 steps, following the ISO work procedure):* Requirement →
     Assign Names → Approval → Worker Confirm → Training & Medical → Pre-Field
     Training → Check In → MOB → D-MOB → Review. Each step is computed from data in the
@@ -410,7 +435,10 @@ the top and the search icon expands the sidebar with the cursor in the search bo
     built from confirmed request items and plans, grouped as in progress /
     upcoming / ended; falls back to the requested dates when HR confirmed
     without dates. Add people, change dates for the round, remove attendees,
-    or record results
+    or record results. List or month-calendar view (toggle, remembered per
+    browser). The list loads `GET /api/training-plan?endedDays=30`; the
+    calendar loads the rounds that overlap the visible weeks with
+    `?from=YYYY-MM-DD&to=YYYY-MM-DD`, so past months work too
   - *Add Training Plan:* create a confirmed round directly, skipping workers
     who already have an overlapping round for the same course. Stored as a
     confirmed `TrainingRequestBatch` (remarks start with `[Training Plan]`), so
@@ -675,6 +703,10 @@ MMS/
   from the space left on screen, so the pager stays visible
 - Large "fill for everyone" panels collapse to a labeled one-line summary once
   their required fields are set; missing optional fields are listed in red
+- View toggles (Bookings, Training Calendar, Manpower Calendar) are a
+  segmented control (gray track, white selected item) at the left of the
+  summary row, and the chosen view is saved in `localStorage` per browser.
+  Navy solid is kept for buttons that do something
 
 ---
 
