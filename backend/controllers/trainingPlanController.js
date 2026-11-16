@@ -6,10 +6,12 @@ const fail = (res, error) => {
   res.status(error.status || 500).json({ message: error.message });
 };
 
-// GET /api/training-plan?endedDays=30
+// GET /api/training-plan?endedDays=30              (มุมมองรายการ)
+// GET /api/training-plan?from=YYYY-MM-DD&to=YYYY-MM-DD  (มุมมองปฏิทิน — รอบที่คาบเกี่ยวช่วงนั้น)
 export async function listSessions(req, res) {
   try {
-    res.json(await service.listSessions({ endedDays: req.query.endedDays }));
+    const { endedDays, from, to } = req.query;
+    res.json(await service.listSessions({ endedDays, from, to }));
   } catch (error) {
     fail(res, error);
   }

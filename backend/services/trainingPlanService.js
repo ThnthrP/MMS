@@ -29,10 +29,18 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
 const statusOf = (start, end, today) =>
   start > today ? "upcoming" : (end || start) < today ? "ended" : "inProgress";
 
-// ── GET: รอบอบรมทั้งหมดที่ยังไม่จบ (+ จบไปแล้วไม่เกิน endedDays วัน) ──
-export async function listSessions({ endedDays = 0 } = {}) {
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ymdParam = (v) => (YMD_RE.test(String(v || "")) ? String(v) : null);
+
+// ── GET: รอบอบรม ──
+//   ค่าเริ่มต้น (มุมมองรายการ): ทุกรอบที่ยังไม่จบ + จบไปแล้วไม่เกิน endedDays วัน
+//   ส่ง from / to (YYYY-MM-DD) มา (มุมมองปฏิทิน): เฉพาะรอบที่คาบเกี่ยวช่วงนั้น — ดูเดือนย้อนหลังได้
+export async function listSessions({ endedDays = 0, from, to } = {}) {
   const today = todayStr();
-  const since = toDate(addDaysStr(today, -Math.max(0, Number(endedDays) || 0)));
+  const fromStr = ymdParam(from);
+  const toStr = ymdParam(to);
+  if (fromStr && toStr && toStr < fromStr) throw httpError(400, "ช่วงวันที่ไม่ถูกต้อง");
+  const since = toDate(fromStr || addDaysStr(today, -Math.max(0, Number(endedDays) || 0)));
 
   const items = await prisma.trainingRequestItem.findMany({
     where: {
@@ -110,7 +118,9 @@ export async function listSessions({ endedDays = 0 } = {}) {
   }
 
   const order = { inProgress: 0, upcoming: 1, ended: 2 };
-  const list = [...sessions.values()].sort((a, b) => {
+  const list = [...sessions.values()]
+    .filter((s) => !toStr || s.start <= toStr) // เริ่มหลังช่วงที่ขอ → ไม่อยู่ในปฏิทินเดือนนั้น
+    .sort((a, b) => {
     if (a.status !== b.status) return order[a.status] - order[b.status];
     if (a.status === "inProgress") return b.start.localeCompare(a.start); // เพิ่งเริ่มก่อน
     if (a.status === "upcoming") return a.start.localeCompare(b.start); // ใกล้เริ่มก่อน
