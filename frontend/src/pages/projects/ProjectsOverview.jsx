@@ -19,6 +19,13 @@ import {
 // ══════════════════════════════════════════════════════════
 // Manpower Calendar — รายการ requirement ทั้งหมด (เดิม Projects Overview)
 // 1 แถว = 1 requirement · กดแถว → หน้ารายละเอียด (timeline ขั้นตอน + ตารางวันทำงาน)
+//
+// 2 มุมมอง (จำค่าที่เลือกต่อเบราว์เซอร์):
+//   ☰ ตาราง     — แบบเดิม
+//   ▤ Timeline — แกนเวลาแนวนอน (Gantt) 1 แถว = 1 requirement · แถบ = ช่วงทำงาน
+//                ไส้แถบ = คนที่ลงงานแล้ว / ต้องการ · แถบส้ม = ใกล้เริ่ม (≤ 14 วัน) แต่คนยังไม่ครบ
+//                ช่วงแกนเวลา = ช่วงวันที่ที่เลือกใน filter (ถ้าไม่ได้เลือก = ครอบทุก requirement)
+//                requirement ที่ยังไม่มีวันที่ → รวมไว้ท้ายสุด
 // ══════════════════════════════════════════════════════════
 
 const TABS = [
@@ -52,6 +59,7 @@ const BTN_REQUIREMENT =
 const ICON_DELETE = `${ICON_BTN} bg-[#fff5f5] text-[#842029] shadow-[0_1px_3px_rgba(220,53,69,0.2),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_3px_6px_rgba(220,53,69,0.3),0_2px_3px_rgba(0,0,0,0.08)]`;
 
 const toYMD = (d) => {
+  if (!d) return ""; // new Date(null) = 1 ม.ค. 1970 — ไม่ใช่ "ไม่มีวันที่"
   const x = new Date(d);
   if (isNaN(x.getTime())) return "";
   const pad = (n) => String(n).padStart(2, "0");
@@ -72,6 +80,49 @@ const DATE_PRESETS = [
 
 const sum = (arr, f) => arr.reduce((n, x) => n + (f(x) || 0), 0);
 
+// ── มุมมอง ──
+const VIEW_KEY = "manpowerCalendarView"; // "table" | "timeline"
+const readView = () => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "timeline" ? "timeline" : "table";
+  } catch {
+    return "table";
+  }
+};
+const writeView = (v) => {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    // localStorage อาจไม่พร้อมใช้งาน — ไม่ critical
+  }
+};
+
+// ── Timeline: คำนวณด้วยสตริง YYYY-MM-DD (UTC) — ไม่เพี้ยนตาม timezone ──
+const DAY = 86400000;
+const dayDiff = (a, b) => Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / DAY);
+const addDaysYMD = (s, n) => {
+  const d = new Date(`${s}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const monthStartOf = (s) => `${s.slice(0, 7)}-01`;
+const monthEndOf = (s) => {
+  const [y, m] = s.slice(0, 7).split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
+const fmtMonth = (s, withYear) =>
+  new Date(`${s}T00:00:00Z`).toLocaleDateString("en-GB", {
+    month: "short",
+    ...(withYear ? { year: "numeric" } : {}),
+    timeZone: "UTC",
+  });
+const SOON_DAYS = 14; // ใกล้เริ่มภายในกี่วัน ถึงเตือนเรื่องคนไม่ครบ
+const TL_LEFT = "w-[150px] sm:w-[260px]"; // คอลัมน์ชื่อ (ตรึงซ้าย)
+const TL_ROW_H = 44;
+
+// ความกว้างต่อวัน — ช่วงยาว = แคบลง (เลื่อนแนวนอนได้เมื่อเกินจอ)
+const dayWidthFor = (days) => (days > 240 ? 4 : days > 120 ? 7 : days > 60 ? 12 : days > 31 ? 20 : 28);
+
 export default function ProjectsOverview() {
   const { backendUrl } = useContext(AppContent);
   const navigate = useNavigate();
@@ -84,6 +135,11 @@ export default function ProjectsOverview() {
   const [dateTo, setDateTo] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
+  const [view, setViewState] = useState(readView);
+  const setView = (v) => {
+    setViewState(v);
+    writeView(v);
+  };
 
   // ตารางเลื่อนในกรอบตัวเอง (หัวคอลัมน์ตรึงไว้) — สูงเท่าพื้นที่ที่เหลือของจอ (วัดจริง)
   //   filter ขึ้นบรรทัดใหม่ตามความกว้างจอ — ใช้ค่าคงที่ไม่ได้
@@ -220,7 +276,7 @@ export default function ProjectsOverview() {
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [loading, hasFilter, activeTab]);
+  }, [loading, hasFilter, activeTab, view]);
 
   const resetFilters = () => {
     setSearch("");
@@ -253,6 +309,40 @@ export default function ProjectsOverview() {
 
   const openDetail = (p) => navigate(`/projects-overview/${p.id}`);
   const hasDeletable = projects.some((p) => deletableIds.has(p.id));
+
+  // ── Timeline ──
+  const today = toYMD(new Date());
+  const dated = [];
+  const undated = [];
+  projects.forEach((p) => {
+    const start = toYMD(p.startDate);
+    if (!start) return undated.push(p);
+    const end = toYMD(p.endDate) || start;
+    dated.push({ p, start, end: end < start ? start : end });
+  });
+  dated.sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+  // ช่วงแกนเวลา: ตาม filter วันที่ · ไม่ได้เลือก = ครอบทุกแถว (ปัดเป็นต้นเดือน / สิ้นเดือน)
+  let tlFrom = dateFrom || (dated.length ? dated.reduce((m, r) => (r.start < m ? r.start : m), dated[0].start) : today);
+  let tlTo = dateTo || (dated.length ? dated.reduce((m, r) => (r.end > m ? r.end : m), dated[0].end) : today);
+  if (!dateFrom) tlFrom = monthStartOf(tlFrom);
+  if (!dateTo) tlTo = monthEndOf(tlTo);
+  if (tlTo < tlFrom) tlTo = tlFrom;
+  const tlDays = dayDiff(tlFrom, tlTo) + 1;
+  const dayW = dayWidthFor(tlDays);
+  const tlWidth = tlDays * dayW;
+  const months = [];
+  for (let m = monthStartOf(tlFrom); m <= tlTo; m = addDaysYMD(monthEndOf(m), 1)) {
+    const s = m < tlFrom ? tlFrom : m;
+    const e = monthEndOf(m) > tlTo ? tlTo : monthEndOf(m);
+    months.push({ key: m, left: dayDiff(tlFrom, s) * dayW, width: (dayDiff(s, e) + 1) * dayW });
+  }
+  // เส้นแบ่งสัปดาห์ (วันจันทร์) — แสดงเมื่อช่องกว้างพอ
+  const weekTicks = [];
+  if (dayW >= 7) {
+    const first = addDaysYMD(tlFrom, (8 - new Date(`${tlFrom}T00:00:00Z`).getUTCDay()) % 7);
+    for (let d = first; d <= tlTo; d = addDaysYMD(d, 7)) weekTicks.push({ d, left: dayDiff(tlFrom, d) * dayW });
+  }
+  const todayLeft = today >= tlFrom && today <= tlTo ? dayDiff(tlFrom, today) * dayW + dayW / 2 : null;
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1800px]">
@@ -367,7 +457,28 @@ export default function ProjectsOverview() {
       {/* ════════ รายการ ════════ */}
       <div className="border-b border-gray-200">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 py-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* สลับมุมมอง — segmented control แบบเดียวกับหน้า Bookings / Training Calendar */}
+            <div className="mr-1 inline-flex shrink-0 gap-0.5 rounded-lg bg-gray-100 p-0.5" role="group" aria-label="มุมมอง">
+              {[
+                ["table", "☰ ตาราง"],
+                ["timeline", "▤ Timeline"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setView(key)}
+                  aria-pressed={view === key}
+                  className={`cursor-pointer whitespace-nowrap rounded-md border-none px-2.5 py-1 text-xs font-semibold transition ${
+                    view === key
+                      ? "bg-white text-[#2B2F78] shadow-[0_1px_2px_rgba(0,0,0,0.12)]"
+                      : "bg-transparent text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {TABS.map((tab) => {
               const active = activeTab === tab.key;
               return (
@@ -397,6 +508,167 @@ export default function ProjectsOverview() {
             {hasFilter
               ? "ไม่พบ requirement ตามเงื่อนไขที่เลือก"
               : "ไม่มี requirement ในหมวดนี้"}
+          </div>
+        ) : view === "timeline" ? (
+          <div className="py-3">
+            {/* คำอธิบายสี */}
+            <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+              <span className="inline-flex items-center gap-1">
+                <span className="relative inline-block h-2.5 w-5 overflow-hidden rounded-sm border border-blue-300 bg-blue-100">
+                  <span className="absolute inset-y-0 left-0 w-2 bg-blue-500" />
+                </span>
+                ไส้แถบ = ลงงานแล้ว / ต้องการ
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2.5 w-5 rounded-sm border border-emerald-300 bg-emerald-500" />
+                คนครบแล้ว
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2.5 w-5 rounded-sm border border-orange-300 bg-orange-100" />
+                เริ่มภายใน {SOON_DAYS} วัน คนยังไม่ครบ
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-3 w-0.5 bg-[#E8590C]" />
+                วันนี้
+              </span>
+            </div>
+
+            {dated.length === 0 ? (
+              <div className="p-8 text-center text-[13px] text-gray-500">ไม่มี requirement ที่ระบุวันที่ในหมวดนี้</div>
+            ) : (
+              <div
+                ref={tableBoxRef}
+                style={tableMaxH ? { maxHeight: tableMaxH } : undefined}
+                className="max-h-[calc(100vh-360px)] overflow-auto rounded-lg border border-gray-200"
+              >
+                <div className="relative" style={{ width: "max-content", minWidth: "100%" }}>
+                  {/* หัวแกนเวลา (ตรึงบน) */}
+                  <div className="sticky top-0 z-[3] flex border-b border-gray-200 bg-gray-50">
+                    <div
+                      className={`${TL_LEFT} sticky left-0 z-[4] shrink-0 border-r border-gray-200 bg-gray-50 px-3 py-2 text-[11px] font-semibold tracking-[0.4px] text-gray-500`}
+                    >
+                      REQUIREMENT
+                    </div>
+                    <div className="relative h-[46px] shrink-0" style={{ width: tlWidth }}>
+                      {months.map((m, i) => (
+                        <div
+                          key={m.key}
+                          style={{ left: m.left, width: m.width }}
+                          className="absolute top-0 h-[24px] overflow-hidden border-l border-gray-200 px-1.5 pt-1 text-[11px] font-semibold text-gray-700"
+                        >
+                          {fmtMonth(m.key, i === 0 || m.key.slice(5, 7) === "01")}
+                        </div>
+                      ))}
+                      {weekTicks.map((w) => (
+                        <div
+                          key={w.d}
+                          style={{ left: w.left }}
+                          className="absolute top-[26px] border-l border-gray-200 pl-1 text-[10px] text-gray-400"
+                        >
+                          {Number(w.d.slice(8))}
+                        </div>
+                      ))}
+                      {todayLeft !== null && (
+                        <div
+                          style={{ left: todayLeft }}
+                          className="absolute bottom-0 -translate-x-1/2 rounded-sm bg-[#E8590C] px-1 text-[9px] font-bold leading-[14px] text-white"
+                        >
+                          วันนี้
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* แถว */}
+                  {dated.map(({ p, start, end }, idx) => {
+                    const need = sum(p.requests, (r) => r.quantity);
+                    const have = p.employees.length;
+                    const full = need > 0 && have >= need;
+                    const soon = !full && dayDiff(today, start) >= 0 && dayDiff(today, start) <= SOON_DAYS;
+                    const s = start < tlFrom ? tlFrom : start;
+                    const e = end > tlTo ? tlTo : end;
+                    const left = dayDiff(tlFrom, s) * dayW;
+                    const width = Math.max(dayW, (dayDiff(s, e) + 1) * dayW);
+                    const pct = need > 0 ? Math.min(100, Math.round((have / need) * 100)) : 0;
+                    const tone = full
+                      ? { bar: "border-emerald-400 bg-emerald-100", fill: "bg-emerald-500", text: "text-emerald-900" }
+                      : soon
+                        ? { bar: "border-orange-400 bg-orange-100", fill: "bg-orange-500", text: "text-orange-900" }
+                        : { bar: "border-blue-300 bg-blue-100", fill: "bg-blue-500", text: "text-blue-900" };
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => openDetail(p)}
+                        className={`group flex cursor-pointer ${idx < dated.length - 1 ? "border-b border-gray-100" : ""}`}
+                        style={{ height: TL_ROW_H }}
+                      >
+                        <div
+                          className={`${TL_LEFT} sticky left-0 z-[2] flex shrink-0 flex-col justify-center border-r border-gray-200 bg-white px-3 group-hover:bg-gray-50`}
+                        >
+                          <div className="flex min-w-0 items-baseline gap-1.5">
+                            <span className="shrink-0 font-mono text-[11px] font-bold text-blue-600">
+                              {projectCode(p) || "—"}
+                            </span>
+                            <span className="truncate text-xs font-semibold text-gray-900">{p.name}</span>
+                          </div>
+                          <div className="truncate text-[11px] text-gray-500">
+                            ● {p.currentStage?.label || "Complete"}
+                            {p.location ? ` · ${p.location}` : ""}
+                          </div>
+                        </div>
+                        <div className="relative shrink-0 group-hover:bg-gray-50/60" style={{ width: tlWidth }}>
+                          {weekTicks.map((w) => (
+                            <div key={w.d} style={{ left: w.left }} className="absolute inset-y-0 border-l border-gray-100" />
+                          ))}
+                          {todayLeft !== null && (
+                            <div style={{ left: todayLeft }} className="absolute inset-y-0 z-[1] w-0.5 -translate-x-1/2 bg-[#E8590C]/70" />
+                          )}
+                          <div
+                            title={`${projectCode(p) || ""} ${p.name}\n${fmtShort(p.startDate)} – ${fmtShort(p.endDate)} · ลงงาน ${have}/${need} คน · ${p.currentStage?.label || "Complete"}`}
+                            style={{ left, width }}
+                            className={`absolute top-[10px] h-[24px] overflow-hidden border ${tone.bar} ${
+                              start < tlFrom ? "rounded-l-none border-l-0" : "rounded-l-md"
+                            } ${end > tlTo ? "rounded-r-none border-r-0" : "rounded-r-md"}`}
+                          >
+                            <div className={`h-full ${tone.fill} opacity-80`} style={{ width: `${pct}%` }} />
+                          </div>
+                          {/* ป้ายข้างแถบ — อยู่นอก overflow ของแถบ จึงอ่านได้แม้แถบสั้น */}
+                          <div
+                            style={{ left: left + 6 }}
+                            className={`pointer-events-none absolute top-[10px] z-[1] flex h-[24px] items-center whitespace-nowrap text-[11px] font-semibold ${tone.text}`}
+                          >
+                            <span className="rounded bg-white/75 px-1">
+                              {have}/{need} คน · {fmtShort(p.startDate)} – {fmtShort(p.endDate)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ยังไม่มีวันที่ — วางบนแกนเวลาไม่ได้ */}
+            {undated.length > 0 && (
+              <div className="mt-3 rounded-lg border border-dashed border-gray-300 px-3 py-2.5">
+                <div className="mb-1.5 text-[11px] font-semibold text-gray-500">
+                  ยังไม่ระบุวันที่ ({undated.length}) — ใส่วันที่ที่หน้า Requirement แล้วจะขึ้นใน Timeline
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {undated.map((p) => (
+                    <Link
+                      key={p.id}
+                      to={`/projects/${p.id}`}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-xs text-gray-700 no-underline hover:border-blue-400 hover:text-blue-700"
+                    >
+                      <span className="font-mono text-[11px] font-bold text-blue-600">{projectCode(p) || "—"}</span>
+                      {p.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <>
