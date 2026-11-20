@@ -16,7 +16,8 @@ export async function getPtaMasterData(req, res) {
       }),
       prisma.employee.findMany({
         where: { status: "active" },
-        select: { id: true, empCode: true, fullName: true, positionId: true },
+        // empId = รหัสพนักงานฝั่ง client (เช่น 38561733) — PTA ใช้แสดงแทน empCode
+        select: { id: true, empCode: true, empId: true, fullName: true, positionId: true },
         orderBy: { fullName: "asc" },
       }),
       prisma.project.findMany({
@@ -47,6 +48,7 @@ export async function getPtaMasterData(req, res) {
       employees: employees.map((e) => ({
         id: e.id,
         empCode: e.empCode,
+        empId: e.empId, // null ได้ ถ้ายังไม่ได้กรอกใน MMS
         name: e.fullName,
         positionId: e.positionId,
       })),
