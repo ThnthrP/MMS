@@ -78,10 +78,22 @@ const CERT_OPTIONS = [
   { value: "has", label: "มีพนักงานถือ cert" },
   { value: "none", label: "ไม่มีใครถือ (0 คน)" },
 ];
-const CHEVRON_OPTIONS = [
-  { value: "used", label: "ใช้ใน Chevron" },
-  { value: "unused", label: "ไม่ได้ใช้" },
-];
+// ── ลูกค้าที่แสดงเป็นคอลัมน์ ──
+//   single (MMS-Chevron, ค่าเริ่มต้น): Chevron คอลัมน์เดียว แสดง ✓ อย่างเดียว (เหมือนเดิม)
+//   multi  (VITE_CLIENT_MODE=multi):   Chevron · Erawan · PTTEP · Valeura ตามลำดับ — ติ๊กในตารางได้เลย
+//   เทียบชื่อ client ใน DB ทั้งคำ ไม่สนตัวพิมพ์ · 1 คอลัมน์รับได้หลายชื่อ (PTTEP ใน DB ตอนนี้ชื่อ "PTT")
+//   client ที่ยังไม่มีใน DB จะไม่ขึ้นคอลัมน์ · หัวคอลัมน์ใช้ชื่อตามที่อยู่ใน DB
+const MULTI_CLIENT = import.meta.env.VITE_CLIENT_MODE === "multi";
+const CLIENT_ORDER = MULTI_CLIENT
+  ? [["CHEVRON"], ["ERAWAN"], ["PTTEP", "PTT"], ["VALEURA"]]
+  : [["CHEVRON"]];
+const clientRank = (c) => {
+  const n = (c.name || "").trim().toUpperCase();
+  return CLIENT_ORDER.findIndex((names) => names.includes(n));
+};
+// การผูก training ↔ client มาจาก ClientTraining (ส่งมาใน t.clientUsage ตามชื่อ client)
+const usageOf = (t, client) =>
+  t.clientUsage?.find((u) => (u.name || "").toUpperCase() === (client.name || "").toUpperCase());
 
 // ตัวเลือก training: "ชื่อกลาง : ชื่อในไฟล์ HR" (ชื่อในไฟล์แสดงเฉพาะเมื่อต่างจากชื่อกลาง)
 //   ค้นได้ทั้งสองชื่อ ไม่สนตัวพิมพ์เล็ก/ใหญ่ และช่องว่าง
@@ -517,14 +529,15 @@ export default function ManageTrainings() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [setupFilter, setSetupFilter] = useState(""); // "" | "set" | "unset"
   const [certFilter, setCertFilter] = useState(""); // "" | "has" | "none"
-  const [chevronFilter, setChevronFilter] = useState(""); // "" | "used" | "unused"
+  const [clientFilter, setClientFilter] = useState(""); // "" | "used:<clientId>" | "unused:<clientId>" | "none"
 
   // ----- clients -----
   const [clients, setClients] = useState([]);
-  // ตารางแสดงเฉพาะคอลัมน์ Chevron (client อื่นยังไม่ได้ใช้งานจริง)
-  const visibleClients = clients.filter(
-    (c) => c.name.toUpperCase() === "CHEVRON",
-  );
+  // คอลัมน์ client ในตาราง — เรียงตาม CLIENT_ORDER (ดูด้านบน)
+  const visibleClients = clients
+    .filter((c) => clientRank(c) >= 0)
+    .sort((a, b) => clientRank(a) - clientRank(b));
+  const [togglingKey, setTogglingKey] = useState(null); // `${trainingId}|${clientId}` ที่กำลังบันทึก
 
   // ----- training sources -----
   const [sources, setSources] = useState([]);
@@ -751,6 +764,54 @@ export default function ManageTrainings() {
     }
   };
 
+  // ── ติ๊ก client ในตาราง (โหมด multi) ──
+  //   ใช้ API เดียวกับ checkbox ในหน้าต่าง Edit: อ่าน standard + การผูกล่าสุดจาก backend ก่อน
+  //   แล้วสร้าง (POST contracts/:id/client-trainings) หรือลบ (DELETE client-trainings/:id)
+  const toggleClientFromTable = async (t, client) => {
+    const contract = client.contracts?.[0];
+    if (!contract) {
+      setListMsg({ type: "err", text: `${client.name} ยังไม่มี active contract — สร้าง contract ก่อน` });
+      return;
+    }
+    const usage = usageOf(t, client);
+    if (
+      usage?.positionCount > 0 &&
+      !window.confirm(
+        `"${t.name}" ถูกใช้ใน Training Matrix ของ ${client.name} อยู่ ${usage.positionCount} ตำแหน่ง\n` +
+          "เอาออกแล้ว ตำแหน่งเหล่านั้นจะไม่ต้องใช้ training นี้ ยืนยัน?",
+      )
+    )
+      return;
+    const key = `${t.id}|${client.id}`;
+    setTogglingKey(key);
+    setListMsg(null);
+    try {
+      const { data } = await axios.get(`${backendUrl}/api/global-trainings/${t.id}`, {
+        withCredentials: true,
+      });
+      const linked = (data.clientTrainings || []).find((ct) => ct.contract?.client?.id === client.id);
+      if (linked) {
+        await axios.delete(`${backendUrl}/api/client-trainings/${linked.id}`, { withCredentials: true });
+      } else {
+        const std = (data.trainingStandards || [])[0];
+        if (!std) throw new Error("ตั้งค่า Training Standard ก่อน (กด ✏️) ถึงจะผูกกับ client ได้");
+        await axios.post(
+          `${backendUrl}/api/contracts/${contract.id}/client-trainings`,
+          { globalTrainingId: t.id, trainingStandardId: std.id },
+          { withCredentials: true },
+        );
+      }
+      await loadTrainings();
+    } catch (err) {
+      setListMsg({
+        type: "err",
+        text: err.response?.data?.message || err.message || `อัปเดต ${client.name} ไม่สำเร็จ`,
+      });
+    } finally {
+      setTogglingKey(null);
+    }
+  };
+
   const selectedSource = sources.find((s) => s.id === form.sourceId) || null;
 
   // ── Save (GlobalTraining + Standard ในปุ่มเดียว) ──
@@ -937,27 +998,29 @@ export default function ManageTrainings() {
   const shownTrainings = trainings.filter((t) => {
     const isSet = (t._count?.trainingStandards ?? 0) > 0;
     const certs = t._count?.employeeTrainings ?? 0;
-    const chevron = !!t.clientUsage?.find(
-      (u) => (u.name || "").toUpperCase() === "CHEVRON",
-    );
     if (trainingFilter && t.id !== trainingFilter) return false;
     if (sourceFilter && t.standard?.sourceName !== sourceFilter) return false;
     if (setupFilter === "set" && !isSet) return false;
     if (setupFilter === "unset" && isSet) return false;
     if (certFilter === "has" && certs === 0) return false;
     if (certFilter === "none" && certs > 0) return false;
-    if (chevronFilter === "used" && !chevron) return false;
-    if (chevronFilter === "unused" && chevron) return false;
+    if (clientFilter === "none" && visibleClients.some((c) => usageOf(t, c))) return false;
+    if (clientFilter.startsWith("used:") || clientFilter.startsWith("unused:")) {
+      const [kind, cid] = clientFilter.split(":");
+      const c = visibleClients.find((x) => x.id === cid);
+      const used = c ? !!usageOf(t, c) : false;
+      if (kind === "used" ? !used : used) return false;
+    }
     return true;
   });
   const hasFilter =
-    trainingFilter || sourceFilter || setupFilter || certFilter || chevronFilter;
+    trainingFilter || sourceFilter || setupFilter || certFilter || clientFilter;
   const resetFilters = () => {
     setTrainingFilter("");
     setSourceFilter("");
     setSetupFilter("");
     setCertFilter("");
-    setChevronFilter("");
+    setClientFilter("");
   };
 
   const trainingOptions = trainings
@@ -970,6 +1033,59 @@ export default function ManageTrainings() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const sourceOptions = sources.map((s) => ({ value: s.name, label: s.name }));
   const pick = (opts, v) => opts.find((o) => o.value === v) || null;
+  // single: ใช้ใน Chevron / ไม่ได้ใช้ (เหมือนเดิม) · multi: แยกกลุ่มต่อ client + ยังไม่ผูกลูกค้าใดเลย
+  const clientOptions = MULTI_CLIENT
+    ? [
+        { value: "none", label: "⚠ ยังไม่ผูกลูกค้าใดเลย" },
+        ...visibleClients.flatMap((c) => [
+          { value: `used:${c.id}`, label: `ใช้ใน ${c.name}` },
+          { value: `unused:${c.id}`, label: `ไม่ได้ใช้ใน ${c.name}` },
+        ]),
+      ]
+    : visibleClients.flatMap((c) => [
+        { value: `used:${c.id}`, label: `ใช้ใน ${c.name}` },
+        { value: `unused:${c.id}`, label: "ไม่ได้ใช้" },
+      ]);
+  const pickClientOption = (v) => clientOptions.find((o) => o.value === v) || null;
+
+  // ช่องลูกค้าในตาราง — multi: checkbox ติ๊กได้ทันที · single: แสดง ✓ อย่างเดียว
+  const renderClientCell = (t, c) => {
+    const usage = usageOf(t, c);
+    if (!MULTI_CLIENT) return <ClientUsageCell usage={usage} />;
+    const hasStandard = (t._count?.trainingStandards ?? 0) > 0;
+    const hasContract = !!c.contracts?.[0];
+    const busy = togglingKey === `${t.id}|${c.id}`;
+    const title = !hasContract
+      ? `${c.name} ยังไม่มี active contract`
+      : !hasStandard && !usage
+        ? "ตั้งค่า Training Standard ก่อน (กด ✏️)"
+        : usage
+          ? `ใช้กับ ${c.name}${usage.positionCount > 0 ? ` · อยู่ใน matrix ${usage.positionCount} ตำแหน่ง` : ""} — กดเพื่อเอาออก`
+          : `ติ๊กถ้า ${c.name} ใช้ training นี้`;
+    return (
+      <label
+        title={title}
+        className={`inline-flex items-center gap-1 whitespace-nowrap ${
+          !hasContract || (!hasStandard && !usage) ? "cursor-not-allowed opacity-40" : "cursor-pointer"
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={!!usage}
+          disabled={busy || !hasContract || (!hasStandard && !usage) || togglingKey !== null}
+          onChange={() => toggleClientFromTable(t, c)}
+          className="h-[15px] w-[15px] cursor-pointer accent-[#198754] disabled:cursor-not-allowed"
+        />
+        {busy ? (
+          <span className="text-[11px] text-gray-400">…</span>
+        ) : (
+          usage?.positionCount > 0 && (
+            <span className="text-[11px] font-semibold text-[#198754]">({usage.positionCount})</span>
+          )
+        )}
+      </label>
+    );
+  };
 
   const panelOpen = selectedId !== null;
   const isEditing = mode === "edit";
@@ -1009,6 +1125,7 @@ export default function ManageTrainings() {
           <span>
             จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training ต่อ
             1 standard
+            {MULTI_CLIENT && " · ติ๊กช่องลูกค้าว่า training ไหนใช้กับลูกค้าเจ้าไหน (วงเล็บ = จำนวนตำแหน่งใน matrix)"}
           </span>
           {!loadingList && (
             <span>
@@ -1094,7 +1211,7 @@ export default function ManageTrainings() {
         </div>
         <div className="min-w-0">
           <label className={`${FILTER_LABEL} flex items-center justify-between`}>
-            <span>Chevron</span>
+            <span>{MULTI_CLIENT ? "Client" : "Chevron"}</span>
             {hasFilter && (
               <button
                 onClick={resetFilters}
@@ -1105,12 +1222,12 @@ export default function ManageTrainings() {
             )}
           </label>
           <Select
-            options={CHEVRON_OPTIONS}
-            value={pick(CHEVRON_OPTIONS, chevronFilter)}
-            onChange={(o) => setChevronFilter(o ? o.value : "")}
+            options={clientOptions}
+            value={pickClientOption(clientFilter)}
+            onChange={(o) => setClientFilter(o ? o.value : "")}
             placeholder="All"
             isClearable
-            isSearchable={false}
+            isSearchable={MULTI_CLIENT}
             styles={FILTER_SELECT_STYLES}
             {...FILTER_MENU_PORTAL}
           />
@@ -1166,11 +1283,8 @@ export default function ManageTrainings() {
                       />
                     </span>
                     {visibleClients.map((c) => (
-                      <span key={c.id}>
-                        {c.name}:{" "}
-                        <ClientUsageCell
-                          usage={t.clientUsage?.find((u) => u.name === c.name)}
-                        />
+                      <span key={c.id} className="inline-flex items-center gap-1">
+                        {c.name}: {renderClientCell(t, c)}
                       </span>
                     ))}
                   </div>
@@ -1215,7 +1329,13 @@ export default function ManageTrainings() {
                       >
                         {c.name.toUpperCase()}
                         <br />
-                        <span className="text-[9px] font-bold">(ตำแหน่ง)</span>
+                        {c.contracts?.[0] ? (
+                          <span className="text-[9px] font-bold">(ตำแหน่ง)</span>
+                        ) : (
+                          <span className="text-[9px] font-bold text-[#dc3545]" title="ยังไม่มี active contract — ติ๊กไม่ได้">
+                            ไม่มี contract
+                          </span>
+                        )}
                       </th>
                     ))}
                     <th
@@ -1263,11 +1383,7 @@ export default function ManageTrainings() {
                       </td>
                       {visibleClients.map((c) => (
                         <td key={c.id} className="px-2 py-2 text-center">
-                          <ClientUsageCell
-                            usage={t.clientUsage?.find(
-                              (u) => u.name === c.name,
-                            )}
-                          />
+                          {renderClientCell(t, c)}
                         </td>
                       ))}
                       <td className="px-4 py-2 text-right">
