@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { AppContent } from "../../context/AppContext";
 import { nameEN, nameTH } from "../../utils/workerSearch";
 import { hasAnyRole } from "../../utils/roles";
+import ClientFilter, { useProjectClientMap } from "../../components/ClientFilter";
 
 // ══════════════════════════════════════════════════════════
 // PE Approvals — คำขอใช้พนักงานที่ % Match ไม่ครบ 100% (ส่งมาจากหน้า Assign Names)
@@ -87,7 +88,17 @@ const TH =
 const TD = "px-3 py-3 align-top";
 
 export default function PEApprovals() {
-  const { backendUrl, userData } = useContext(AppContent);
+  const { backendUrl, userData, isMultiClient, clientMatches, selectedClient } =
+    useContext(AppContent);
+  // โหมด multi: ชื่อลูกค้าของแต่ละคำขอ (Project → Contract → Client)
+  const projectClientMap = useProjectClientMap();
+  const itemClient = useCallback(
+    (it) => {
+      const p = it.manpowerRequest?.project;
+      return p?.contract?.client?.name || projectClientMap.get(p?.id) || null;
+    },
+    [projectClientMap],
+  );
   // เช็กทุก role (หลัก + เสริม) — เช่น MP ที่มี role เสริม project_engineer อนุมัติได้
   const canDecide = hasAnyRole(userData, DECIDER_ROLES);
 
@@ -136,15 +147,34 @@ export default function PEApprovals() {
     return () => window.removeEventListener("keydown", onKey);
   }, [decision, saving]);
 
-  // ตัวเลือก dropdown — จากข้อมูลจริง
+  // คำขอของลูกค้าที่เลือก (ตัวกรอง Client / Navbar) — ทุกลูกค้า / โหมด single = ทั้งหมด
+  const clientItems = useMemo(
+    () =>
+      isMultiClient && selectedClient
+        ? items.filter((it) => clientMatches(itemClient(it)))
+        : items,
+    [items, isMultiClient, selectedClient, clientMatches, itemClient],
+  );
+
+  // ตัวเลือก dropdown — จากข้อมูลจริง (Project: เฉพาะของลูกค้าที่เลือก)
   const projectOptions = useMemo(() => {
     const m = new Map();
-    for (const it of items) {
+    for (const it of clientItems) {
       const p = it.manpowerRequest?.project;
       if (p?.id && !m.has(p.id)) m.set(p.id, projectLabel(p));
     }
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [items]);
+  }, [clientItems]);
+
+  // project ที่เลือกไว้ไม่ใช่ของลูกค้าที่เลือกแล้ว → ล้าง (ไม่งั้นรายการว่างโดยไม่รู้สาเหตุ)
+  useEffect(() => {
+    if (
+      !loading &&
+      projectFilter &&
+      !projectOptions.some(([id]) => id === projectFilter)
+    )
+      setProjectFilter("");
+  }, [loading, projectFilter, projectOptions]);
   const positionOptions = useMemo(
     () => uniqSorted(items.map((it) => it.manpowerRequest?.position?.name)),
     [items],
@@ -157,7 +187,7 @@ export default function PEApprovals() {
   // กรองทุกอย่าง "ยกเว้น tab สถานะ" — ใช้นับตัวเลขบน tab
   const baseFiltered = useMemo(() => {
     const q = search.trim().toLowerCase().replace(/\s+/g, "");
-    return items.filter((it) => {
+    return clientItems.filter((it) => {
       const ymd = toYMD(it.createdAt);
       if (dateFrom && ymd < dateFrom) return false;
       if (dateTo && ymd > dateTo) return false;
@@ -189,7 +219,7 @@ export default function PEApprovals() {
       );
     });
   }, [
-    items,
+    clientItems,
     search,
     dateFrom,
     dateTo,
@@ -301,6 +331,11 @@ export default function PEApprovals() {
     const req = it.manpowerRequest;
     return (
       <div className="min-w-0">
+        {isMultiClient && itemClient(it) && (
+          <span className="mb-0.5 inline-block rounded bg-[#eef0fb] px-1.5 py-px text-[10px] font-semibold text-[#2B2F78]">
+            {itemClient(it)}
+          </span>
+        )}
         <div className="font-semibold">{req?.position?.name ?? "—"}</div>
         <div className="text-[11px] text-gray-500">ต้องการ {req?.quantity ?? "—"} คน</div>
         {req?.project?.id ? (
@@ -440,7 +475,15 @@ export default function PEApprovals() {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_1.5fr_1fr]">
+        <div
+          className={`mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+            isMultiClient
+              ? "lg:grid-cols-[1fr_2fr_2fr_1.5fr_1fr]"
+              : "lg:grid-cols-[2fr_2fr_1.5fr_1fr]"
+          }`}
+        >
+          {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar (ปุ่ม ล้าง filter ไม่ล้างค่านี้) */}
+          <ClientFilter />
           <div className="min-w-0">
             <label className={FILTER_LABEL}>ค้นหา</label>
             <input
@@ -548,6 +591,8 @@ export default function PEApprovals() {
         <div className="p-10 text-center text-[13px] text-gray-500">
           {hasFilter
             ? "ไม่พบคำขอตามเงื่อนไขที่เลือก"
+            : selectedClient && items.length > 0 && clientItems.length === 0
+              ? `ไม่มีคำขอของ ${selectedClient.name}`
             : tab === "pending"
               ? "ไม่มีคำขอที่รออนุมัติ"
               : "ไม่มีรายการในหมวดนี้"}

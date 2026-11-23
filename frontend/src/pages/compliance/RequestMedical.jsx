@@ -108,7 +108,8 @@ function Badge({ tone, children }) {
 }
 
 export default function RequestMedical() {
-  const { backendUrl } = useContext(AppContent);
+  // โหมด multi: คำขอแนบชื่อลูกค้าที่เลือกบน Navbar (พนักงานเป็น Worker Pool รวม — ไม่กรองรายชื่อ)
+  const { backendUrl, isMultiClient, selectedClient } = useContext(AppContent);
 
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -238,7 +239,12 @@ export default function RequestMedical() {
 
   // เหตุผล + client ต่อคน → แนบไปกับคำขอ (หน้า Medical Bookings แสดงเป็น ❌ หมดอายุ / ⏰ ใกล้หมดอายุ / ⚪ ไม่มีข้อมูล)
   const reasonById = Object.fromEntries(selectedIds.map((id) => [id, requestReason(rowById.get(id)?.bucket)]));
-  const clientById = Object.fromEntries(selectedIds.map((id) => [id, clientNameOf(rowById.get(id)?.w)]));
+  const clientById = Object.fromEntries(
+    selectedIds.map((id) => [
+      id,
+      isMultiClient && selectedClient ? selectedClient.name : clientNameOf(rowById.get(id)?.w),
+    ]),
+  );
 
   const rowBg = (r) =>
     r.requested ? "bg-gray-50" : selectedIds.includes(r.w.id) ? "bg-[#fffbe6]" : "bg-white";

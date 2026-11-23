@@ -1,17 +1,44 @@
-import { useState, useEffect, useLayoutEffect, useContext, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useContext, useRef, useMemo } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
 import { Link, useNavigate } from "react-router-dom";
 import NewRequirementModal from "./NewRequirementModal";
 import { StageBadge } from "./calendarShared";
+import ClientFilter, { useProjectClientMap } from "../../components/ClientFilter";
+import { textMentionsClient } from "../../utils/clientMode";
 
 // ══════════════════════════════════════════════════════════
 // Projects (ON Number) — Master Project Register
 // อยู่ที่เมนู Projects & Positions › Projects (ข้อมูลตั้งต้นจากระบบบัญชี / import)
 // การเปิด requirement ใหม่ใช้การ์ดเดียวกับหน้า Manpower Requirements (NewRequirementModal.jsx)
+//
+// ตัวกรอง: โหลด ON ของปีที่เลือกทั้งหมด (ปีละไม่กี่ร้อยรายการ) แล้วกรอง / แบ่งหน้าในเบราว์เซอร์
+//   ค้นหา (ON / ชื่องาน / Engineer) · Customer · Company · Team · สถานะ · Client (โหมด multi)
+//   ถ้าวันหน้า ON ต่อปีเยอะมาก (หลายพัน) ค่อยย้ายการกรองไปทำที่ backend
 // ══════════════════════════════════════════════════════════
 
 const PAGE_SIZE = 15;
+const FETCH_PAGE_SIZE = 500; // ดึงทีละก้อนจนครบทั้งปี
+const NONE = "__none__"; // ตัวเลือก "— ไม่ระบุ —" (ช่องว่าง)
+
+const STATUS_OPTIONS = [
+  ["", "ทั้งหมด"],
+  ["linked", "✓ เปิดใช้งานแล้ว"],
+  ["unlinked", "ยังไม่เปิดใช้งาน"],
+];
+
+const FILTER_LABEL =
+  "mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500";
+const FIELD =
+  "box-border h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-[13px] text-gray-900 outline-none focus:border-blue-500";
+
+const squash = (v) => String(v ?? "").toLowerCase().replace(/\s+/g, "");
+const uniqSorted = (arr) =>
+  [...new Set(arr.map((v) => (v ?? "").trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+const matchOption = (value, filter) =>
+  !filter || (filter === NONE ? !(value ?? "").trim() : (value ?? "").trim() === filter);
 
 const DETAIL_FIELDS = [
   ["owner", "เจ้าของงาน"],
@@ -32,8 +59,10 @@ const DETAIL_FIELDS = [
   ["totalValue", "Total Value"],
 ];
 
-const TABLE_HEADERS = [
+// โหมด multi เพิ่มคอลัมน์ CLIENT (Company ในข้อมูลจริงไม่ใช่ชื่อลูกค้าเสมอไป)
+const tableHeaders = (multi) => [
   ["ON NUMBER", "w-[150px]"],
+  ...(multi ? [["CLIENT", ""]] : []),
   ["PROJECT / JOB", ""],
   ["CUSTOMER", ""],
   ["COMPANY", ""],
@@ -130,8 +159,10 @@ function StatusBadge({ linkedCount, large = false }) {
 }
 
 export default function Project() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, isMultiClient, clients, clientMatches, selectedClient } =
+    useContext(AppContent);
   const navigate = useNavigate();
+  const projectClientMap = useProjectClientMap(); // โหมด multi เท่านั้น
 
   // ── ยกเลิกการเช็ค role ในระดับ component นี้ ──
   // สิทธิ์เข้าถึงหน้า /projects ถูกควบคุมที่ AppRouter.jsx (allowRoles) อยู่แล้ว
@@ -140,13 +171,17 @@ export default function Project() {
   const [years, setYears] = useState([]);
   const [activeYear, setActiveYear] = useState(null);
   const [page, setPage] = useState(1);
-  const [data, setData] = useState({ records: [], total: 0, totalPages: 1 });
+  const [records, setRecords] = useState([]); // ON ทั้งปีที่เลือก
   const [loading, setLoading] = useState(true);
+  const fetchReqRef = useRef(0);
 
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  // ── filters ──
+  const [search, setSearch] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [teamFilter, setTeamFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
-  const [clients, setClients] = useState([]);
   const [viewingRecord, setViewingRecord] = useState(null);
   const [linkedProjectsModal, setLinkedProjectsModal] = useState(null);
   // ข้อมูลจากหน้า Manpower Calendar (ขั้นตอน / จำนวนคน / แท็บ) — โหลดตอนเปิดรายการ requirement
@@ -178,43 +213,132 @@ export default function Project() {
     }
   };
 
-  const fetchClients = async () => {
-    try {
-      const res = await axios.get(`${backendUrl}/api/clients`, {
-        withCredentials: true,
-      });
-      setClients(res.data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const fetchRecords = async (year, pageNum, search) => {
+  // ดึงทุกหน้าของปีนั้นจาก endpoint เดิม (browse) — backend จำกัด pageSize ไว้เท่าไหร่ก็ยังได้ครบ
+  const fetchYearRecords = async (year) => {
+    const reqId = ++fetchReqRef.current; // กันผลของปีเก่ามาทับปีใหม่
     try {
       setLoading(true);
-      const res = await axios.get(
-        `${backendUrl}/api/projects/master-records/browse`,
-        {
-          withCredentials: true,
-          params: { year, page: pageNum, pageSize: PAGE_SIZE, search },
-        },
-      );
-      setData(res.data);
+      let all = [];
+      let pageNum = 1;
+      let totalPages = 1;
+      do {
+        const res = await axios.get(
+          `${backendUrl}/api/projects/master-records/browse`,
+          {
+            withCredentials: true,
+            params: { year, page: pageNum, pageSize: FETCH_PAGE_SIZE },
+          },
+        );
+        all = all.concat(res.data?.records ?? []);
+        totalPages = res.data?.totalPages ?? 1;
+        pageNum += 1;
+      } while (pageNum <= totalPages && pageNum <= 100);
+      if (reqId === fetchReqRef.current) setRecords(all);
     } catch (error) {
       console.error(error);
+      if (reqId === fetchReqRef.current) setRecords([]);
     } finally {
-      setLoading(false);
+      if (reqId === fetchReqRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchYears();
-    fetchClients();
   }, []);
 
   useEffect(() => {
-    if (activeYear !== null) fetchRecords(activeYear, page, searchQuery);
-  }, [activeYear, page, searchQuery]);
+    if (activeYear !== null) fetchYearRecords(activeYear);
+  }, [activeYear]);
+
+  // ── ลูกค้าของแต่ละ ON (โหมด multi) ──
+  //   1) requirement ที่เปิดจาก ON นี้ → Contract → Client (แม่นที่สุด)
+  //   2) ยังไม่เคยเปิด requirement → ดูจาก Company / Customer Name ว่าพูดถึงลูกค้าไหน
+  //   หาไม่ได้ = ไม่ระบุลูกค้า (ขึ้นเฉพาะตอนเลือก "ทุกลูกค้า")
+  const recordClient = (r) => {
+    if (!isMultiClient) return null;
+    for (const lp of r.linkedProjects ?? []) {
+      const name = lp.contract?.client?.name || projectClientMap.get(lp.id);
+      if (name) return name;
+    }
+    const hit = clients.find(
+      (c) =>
+        textMentionsClient(r.company, c.name) ||
+        textMentionsClient(r.customerName, c.name),
+    );
+    return hit?.name ?? null;
+  };
+
+  const rows = useMemo(
+    () => records.map((r) => ({ ...r, _client: recordClient(r) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records, isMultiClient, projectClientMap, clients],
+  );
+
+  // ON ของลูกค้าที่เลือก (ตัวกรอง Client / Navbar) — ตัวเลือก dropdown อื่นๆ คิดจากชุดนี้
+  const scopedRows = useMemo(
+    () =>
+      selectedClient ? rows.filter((r) => clientMatches(r._client)) : rows,
+    [rows, selectedClient, clientMatches],
+  );
+
+  const customerOptions = useMemo(
+    () => uniqSorted(scopedRows.map((r) => r.customerName)),
+    [scopedRows],
+  );
+  const companyOptions = useMemo(
+    () => uniqSorted(scopedRows.map((r) => r.company)),
+    [scopedRows],
+  );
+  const teamOptions = useMemo(
+    () => uniqSorted(scopedRows.map((r) => r.team)),
+    [scopedRows],
+  );
+  const hasBlank = (key) => scopedRows.some((r) => !(r[key] ?? "").trim());
+
+  const filteredRows = useMemo(() => {
+    const q = squash(search);
+    return scopedRows.filter((r) => {
+      if (!matchOption(r.customerName, customerFilter)) return false;
+      if (!matchOption(r.company, companyFilter)) return false;
+      if (!matchOption(r.team, teamFilter)) return false;
+      const linked = (r.linkedProjects?.length ?? 0) > 0;
+      if (statusFilter === "linked" && !linked) return false;
+      if (statusFilter === "unlinked" && linked) return false;
+      if (!q) return true;
+      return [r.projectCode, r.jobTitle, r.engineer, r.owner, r.ccNo, r.customerName].some(
+        (v) => squash(v).includes(q),
+      );
+    });
+  }, [scopedRows, search, customerFilter, companyFilter, teamFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const pageRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // เปลี่ยนตัวกรอง / ปี / ลูกค้า → กลับหน้า 1
+  useEffect(() => {
+    setPage(1);
+  }, [search, customerFilter, companyFilter, teamFilter, statusFilter, activeYear, selectedClient]);
+
+  // ค่าที่เลือกไว้ไม่มีในปี / ลูกค้านี้แล้ว → ล้างช่องนั้น (ไม่งั้นตารางว่างโดยไม่รู้สาเหตุ)
+  useEffect(() => {
+    if (loading) return;
+    const stale = (f, opts) => f && f !== NONE && !opts.includes(f);
+    if (stale(customerFilter, customerOptions)) setCustomerFilter("");
+    if (stale(companyFilter, companyOptions)) setCompanyFilter("");
+    if (stale(teamFilter, teamOptions)) setTeamFilter("");
+  }, [loading, customerOptions, companyOptions, teamOptions, customerFilter, companyFilter, teamFilter]);
+
+  const hasFilter =
+    search || customerFilter || companyFilter || teamFilter || statusFilter;
+
+  // ไม่ล้าง Client — เป็นค่าที่ใช้ร่วมทุกหน้า (เปลี่ยนที่ช่อง Client / Navbar)
+  const resetFilters = () => {
+    setSearch("");
+    setCustomerFilter("");
+    setCompanyFilter("");
+    setTeamFilter("");
+    setStatusFilter("");
+  };
 
   useEffect(() => {
     if (!linkedProjectsModal || overviewById) return;
@@ -244,21 +368,10 @@ export default function Project() {
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [loading, data.totalPages, searchQuery, years.length]);
+  }, [loading, totalPages, filteredRows.length, years.length, isMultiClient]);
 
   const switchYear = (y) => {
     setActiveYear(y);
-    setPage(1);
-  };
-
-  const runSearch = () => {
-    setSearchQuery(searchInput.trim());
-    setPage(1);
-  };
-
-  const clearSearch = () => {
-    setSearchInput("");
-    setSearchQuery("");
     setPage(1);
   };
 
@@ -327,6 +440,8 @@ export default function Project() {
     </>
   );
 
+  const headers = tableHeaders(isMultiClient);
+
   const emptyState = (text) => (
     <div className="rounded-[10px] border border-gray-200 bg-white p-10 text-center text-[13px] text-gray-500">
       {text}
@@ -360,43 +475,101 @@ export default function Project() {
           </div>
         </div>
 
-        {/* ════════ Search & Filter ════════ */}
+        {/* ════════ Search & Filter ════════
+            ค้นหาข้อความ + dropdown แยกช่อง (แบบหน้า PE Approvals / Requests) — กรองทันทีไม่ต้องกดปุ่ม */}
         <div className="mb-3 shrink-0 border-y border-gray-200 py-3">
-          <label className="mb-1 block text-[11px] font-semibold text-gray-500">
-            ค้นหา (ON Number / ชื่องาน / ลูกค้า / Engineer)
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="เช่น ON/018-01/2026, Hydraulic, K.Pakorn..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") runSearch();
-              }}
-              className={`${INPUT} min-w-0 max-w-[720px] flex-1`}
-            />
-            <button
-              onClick={runSearch}
-              className={`${BTN} shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 sm:px-5`}
-            >
-              🔍 ค้นหา
-            </button>
-            {searchQuery && (
-              <button
-                onClick={clearSearch}
-                className={`${BTN} shrink-0 rounded-lg border border-solid border-gray-200 bg-white px-3 py-2 text-gray-500 hover:bg-gray-50 sm:px-4`}
+          <div
+            className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+              isMultiClient
+                ? "lg:grid-cols-[150px_minmax(220px,2fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.1fr)]"
+                : "lg:grid-cols-[minmax(240px,2fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.1fr)]"
+            }`}
+          >
+            {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar */}
+            <ClientFilter />
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>ค้นหา</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="ON Number / ชื่องาน / Engineer / CC No."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className={`${FIELD} pr-8`}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    title="ล้างคำค้น"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer border-none bg-transparent p-0 text-[13px] text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+            {[
+              ["Customer", customerFilter, setCustomerFilter, customerOptions, "customerName"],
+              ["Company", companyFilter, setCompanyFilter, companyOptions, "company"],
+              ["Team", teamFilter, setTeamFilter, teamOptions, "team"],
+            ].map(([label, value, setValue, options, key]) => (
+              <div key={label} className="min-w-0">
+                <label className={FILTER_LABEL}>{label}</label>
+                <select
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  className={FIELD}
+                >
+                  <option value="">ทั้งหมด</option>
+                  {options.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                  {hasBlank(key) && <option value={NONE}>— ไม่ระบุ —</option>}
+                </select>
+              </div>
+            ))}
+            <div className="min-w-0">
+              <label className={FILTER_LABEL}>สถานะ</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={FIELD}
               >
-                ✕ ล้าง
+                {STATUS_OPTIONS.map(([v, label]) => (
+                  <option key={v} value={v}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+            <span>
+              {loading ? (
+                "กำลังโหลด..."
+              ) : (
+                <>
+                  ปี {activeYear} — พบ{" "}
+                  <strong className="text-gray-900">{filteredRows.length}</strong>
+                  {filteredRows.length !== records.length && ` จาก ${records.length}`} รายการ
+                  {selectedClient && ` · ลูกค้า ${selectedClient.name}`}
+                </>
+              )}
+            </span>
+            {hasFilter && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="cursor-pointer border-none bg-transparent p-0 text-xs font-semibold text-[#dc3545] underline hover:text-[#a71d2a]"
+              >
+                ✕ ล้าง filter
               </button>
             )}
           </div>
-          {searchQuery && (
-            <div className="mt-2 text-xs text-gray-500">
-              ผลค้นหา "{searchQuery}" ในปี {activeYear} — พบ{" "}
-              <strong className="text-gray-900">{data.total}</strong> รายการ
-            </div>
-          )}
         </div>
 
         {/* Year Tabs — มือถือเลื่อนแนวนอนได้ถ้าปีเยอะ */}
@@ -420,11 +593,11 @@ export default function Project() {
         <div className="lg:hidden">
           {loading ? (
             emptyState("Loading...")
-          ) : data.records.length === 0 ? (
-            emptyState("No records found")
+          ) : pageRows.length === 0 ? (
+            emptyState(hasFilter || selectedClient ? "ไม่พบ ON ตามเงื่อนไขที่เลือก" : "No records found")
           ) : (
             <div className="flex flex-col gap-2.5">
-              {data.records.map((r) => {
+              {pageRows.map((r) => {
                 const linkedCount = r.linkedProjects?.length ?? 0;
                 return (
                   <div
@@ -441,6 +614,12 @@ export default function Project() {
                       {r.jobTitle}
                     </div>
                     <div className="mt-2 grid grid-cols-[72px_1fr] gap-y-0.5 text-xs">
+                      {isMultiClient && (
+                        <>
+                          <span className="text-gray-500">Client</span>
+                          <span className="break-words font-semibold">{r._client || "—"}</span>
+                        </>
+                      )}
                       <span className="text-gray-500">Customer</span>
                       <span className="break-words">
                         {r.customerName || "—"}
@@ -470,11 +649,11 @@ export default function Project() {
             <table className="w-full min-w-[820px] border-collapse text-[13px]">
               <thead>
                 <tr>
-                  {TABLE_HEADERS.map(([h, w], i) => (
+                  {headers.map(([h, w]) => (
                     <th
                       key={h}
                       className={`sticky top-0 z-[1] whitespace-nowrap bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.5px] text-gray-500 shadow-[inset_0_-1px_0_#dee2e6] ${
-                        i === 6 ? "text-center" : "text-left"
+                        h === "ACTIONS" ? "text-center" : "text-left"
                       } ${w}`}
                     >
                       {h}
@@ -485,24 +664,24 @@ export default function Project() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7" className="p-10 text-center text-gray-500">
+                    <td colSpan={headers.length} className="p-10 text-center text-gray-500">
                       Loading...
                     </td>
                   </tr>
-                ) : data.records.length === 0 ? (
+                ) : pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="p-10 text-center text-gray-500">
-                      No records found
+                    <td colSpan={headers.length} className="p-10 text-center text-gray-500">
+                      {hasFilter || selectedClient ? "ไม่พบ ON ตามเงื่อนไขที่เลือก" : "No records found"}
                     </td>
                   </tr>
                 ) : (
-                  data.records.map((r, idx) => {
+                  pageRows.map((r, idx) => {
                     const linkedCount = r.linkedProjects?.length ?? 0;
                     return (
                       <tr
                         key={r.id}
                         className={`hover:bg-gray-50 ${
-                          idx < data.records.length - 1
+                          idx < pageRows.length - 1
                             ? "border-b border-gray-100"
                             : ""
                         }`}
@@ -510,6 +689,11 @@ export default function Project() {
                         <td className="whitespace-nowrap px-4 py-3 font-semibold">
                           {r.projectCode}
                         </td>
+                        {isMultiClient && (
+                          <td className="whitespace-nowrap px-4 py-3 font-semibold text-[#2B2F78]">
+                            {r._client || <span className="font-normal text-gray-400">—</span>}
+                          </td>
+                        )}
                         <td className="px-4 py-3">{r.jobTitle}</td>
                         <td className="px-4 py-3">{r.customerName || "—"}</td>
                         <td className="px-4 py-3">{r.company || "—"}</td>
@@ -533,13 +717,13 @@ export default function Project() {
         </div>
 
         {/* Pagination */}
-        {data.totalPages > 1 && (
+        {totalPages > 1 && (
           <div
             ref={pagerRef}
             className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 px-1 py-3 text-xs text-gray-500 sm:px-4"
           >
             <span>
-              หน้า {data.page} / {data.totalPages} — ทั้งหมด {data.total} รายการ
+              หน้า {page} / {totalPages} — ทั้งหมด {filteredRows.length} รายการ
             </span>
             <div className="flex flex-wrap items-center gap-1">
               <button
@@ -550,7 +734,7 @@ export default function Project() {
                 ←<span className="hidden sm:inline"> ก่อนหน้า</span>
               </button>
 
-              {getPageNumbers(page, data.totalPages).map((p, idx) =>
+              {getPageNumbers(page, totalPages).map((p, idx) =>
                 p === "..." ? (
                   <span key={`dots-${idx}`} className="px-1 text-gray-400">
                     …
@@ -571,8 +755,8 @@ export default function Project() {
               )}
 
               <button
-                onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-                disabled={page >= data.totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
                 className={PAGE_BTN}
               >
                 <span className="hidden sm:inline">ถัดไป </span>→

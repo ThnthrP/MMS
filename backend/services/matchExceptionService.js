@@ -174,6 +174,8 @@ export async function listRequests({ status } = {}) {
               id: true,
               name: true,
               masterProjectRecord: { select: { projectCode: true } },
+              // ลูกค้าของ project — หน้า PE Approvals / Dashboard ใช้กรองตามลูกค้า (โหมด multi)
+              contract: { select: { client: { select: { id: true, name: true } } } },
             },
           },
         },

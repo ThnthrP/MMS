@@ -12,6 +12,7 @@ import {
   Legend,
 } from "recharts";
 import { AppContent } from "../../context/AppContext";
+import ClientFilter, { useProjectClientMap } from "../../components/ClientFilter";
 
 // ══════════════════════════════════════════════════════════
 // Dashboard — หน้าแรกของทุก role (เดิมชื่อ AdminDashboard.jsx)
@@ -21,6 +22,8 @@ import { AppContent } from "../../context/AppContext";
 //      แถว 2 ช่องที่ 3 = สถานะพนักงาน (Mobilization / Availability) — เดิมเป็น section แยกครึ่งจอ
 //   3. Certification — section เดียว สลับ "ตาราง (กดแถว → รายชื่อ)" / "กราฟตามประเภท"
 //      (เดิมกราฟกับตารางแสดงข้อมูลชุดเดียวกันซ้อนกัน หน้ายาวเกือบ 4 จอ)
+//   โหมด multi: เลือกลูกค้าแล้ว กรองเฉพาะรายการที่ผูกกับ project (ขาดคน / PE / เริ่มงาน 30 วัน)
+//      ตัวเลข KPI, Booking, D-MOB, สถานะพนักงาน, Cert = Worker Pool รวม (พนักงานใช้ร่วมทุกลูกค้า)
 // ══════════════════════════════════════════════════════════
 
 // recharts ต้องใช้ค่าสีจริง ไม่ใช่ class
@@ -193,7 +196,9 @@ function TodoRow({ to, left, sub, right }) {
 // main
 // ══════════════════════════════════════════════════════════
 export default function Dashboard() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, isMultiClient, clientMatches, selectedClient } =
+    useContext(AppContent);
+  const projectClientMap = useProjectClientMap(); // โหมด multi เท่านั้น
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -327,6 +332,7 @@ export default function Dashboard() {
   const openPositions = (requirements || [])
     .filter((r) => !(r.endDate && daysFromToday(r.endDate) < 0))
     .filter((r) => (r.assigned || 0) < (r.quantity || 0))
+    .filter((r) => clientMatches(r.client))
     .sort(
       (a, b) =>
         new Date(a.startDate || 8.64e15) - new Date(b.startDate || 8.64e15),
@@ -335,10 +341,17 @@ export default function Dashboard() {
     (n, r) => n + (r.quantity - (r.assigned || 0)),
     0,
   );
-  // 2) PE รออนุมัติ — นับต่อโปรเจกต์
+  // 2) PE รออนุมัติ — นับต่อโปรเจกต์ (เฉพาะลูกค้าที่เลือก)
+  const scopedPe =
+    peItems && selectedClient
+      ? peItems.filter((it) => {
+          const p = it.manpowerRequest?.project;
+          return clientMatches(p?.contract?.client?.name || projectClientMap.get(p?.id));
+        })
+      : peItems;
   const peByProject = (() => {
     const m = new Map();
-    for (const it of peItems || []) {
+    for (const it of scopedPe || []) {
       const p = it.manpowerRequest?.project;
       const key = p?.id || "unknown";
       if (!m.has(key)) m.set(key, { project: p, count: 0 });
@@ -351,7 +364,7 @@ export default function Dashboard() {
     ? [...(overview.upcoming || []), ...(overview.inProgress || [])]
         .filter((p) => {
           const n = daysFromToday(p.startDate);
-          return n != null && n >= 0 && n <= UPCOMING_DAYS;
+          return n != null && n >= 0 && n <= UPCOMING_DAYS && clientMatches(p.client);
         })
         .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
     : [];
@@ -424,6 +437,9 @@ export default function Dashboard() {
           <h1 className="m-0 text-lg font-bold">My Dashboard</h1>
           <div className="text-xs text-gray-500">{today}</div>
         </div>
+        <div className="flex shrink-0 items-end gap-2">
+        {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar */}
+        <ClientFilter className="w-[160px]" />
         <button
           onClick={() => load()}
           disabled={refreshing}
@@ -434,6 +450,7 @@ export default function Dashboard() {
           </span>{" "}
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
+        </div>
       </div>
 
       {/* ════════ KPI — กดแล้วไปหน้าที่เกี่ยวข้อง ════════ */}
@@ -479,6 +496,13 @@ export default function Dashboard() {
       {showTodo && (
         <section className="border-b border-gray-200 py-4">
           <div className={SECTION_HEAD}>งานที่รอดำเนินการ</div>
+          {isMultiClient && selectedClient && (
+            <div className="-mt-1.5 mb-3 text-[11px] text-gray-500">
+              แถวบน (ขาดคน / PE / เริ่มงาน) แสดงเฉพาะ{" "}
+              <b className="text-[#c2410c]">{selectedClient.name}</b> · Booking, D-MOB,
+              สถานะพนักงาน และตัวเลขด้านบนเป็นของพนักงานทั้งหมด (Worker Pool ใช้ร่วมทุกลูกค้า)
+            </div>
+          )}
           {/* แถว 1: งานจัดคน · แถว 2: งานเอกสาร/หน้างาน — คั่นด้วยเส้นทั้งแนวตั้งและแนวนอน */}
           <div className={TODO_ROW}>
             {requirements && (
@@ -533,13 +557,13 @@ export default function Dashboard() {
               <div className="min-w-0">
                 <TodoHead
                   title="PE รออนุมัติ"
-                  count={peItems.length}
+                  count={scopedPe.length}
                   unit="คำขอ"
-                  tone={peItems.length ? "text-[#b08900]" : "text-[#198754]"}
+                  tone={scopedPe.length ? "text-[#b08900]" : "text-[#198754]"}
                   to="/pe-approvals"
                   linkText="ไปอนุมัติ"
                 />
-                {peItems.length === 0 ? (
+                {scopedPe.length === 0 ? (
                   <div className="border-t border-gray-100 py-2 text-xs text-[#198754]">
                     ✓ ไม่มีคำขอค้าง
                   </div>

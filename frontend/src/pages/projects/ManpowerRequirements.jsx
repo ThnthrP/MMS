@@ -4,6 +4,7 @@ import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import NewRequirementModal from "./NewRequirementModal";
+import ClientFilter from "../../components/ClientFilter";
 
 // ══════════════════════════════════════════════════════════
 // Manpower Requirements (/requirements) — แบบโปรแกรมตัวอย่าง
@@ -123,7 +124,9 @@ const downloadCsv = (filename, rows) => {
 };
 
 export default function ManpowerRequirements() {
-  const { backendUrl } = useContext(AppContent);
+  // Client = ค่าเดียวกับ Navbar (โหมด multi) · โหมด single ไม่มีตัวกรองลูกค้า (มีแต่ Chevron)
+  const { backendUrl, isMultiClient, clientMatches, selectedClient } =
+    useContext(AppContent);
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -133,7 +136,6 @@ export default function ManpowerRequirements() {
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState("active");
   const [fill, setFill] = useState("all");
-  const [client, setClient] = useState("");
   const [projectId, setProjectId] = useState("");
   const [position, setPosition] = useState("");
   const [page, setPage] = useState(1);
@@ -154,15 +156,16 @@ export default function ManpowerRequirements() {
       .finally(() => setLoading(false));
   }, [backendUrl, reload]);
 
-  const clients = useMemo(
-    () => [...new Set(rows.map((r) => r.client).filter(Boolean))].sort(),
-    [rows],
+  // แถวของลูกค้าที่เลือก — ตัวเลือก Project / Position และตัวเลขทั้งหมดคิดจากชุดนี้
+  const scopedRows = useMemo(
+    () => (selectedClient ? rows.filter((r) => clientMatches(r.client)) : rows),
+    [rows, selectedClient, clientMatches],
   );
   // ตัวเลือกโปรเจกต์ แบบเดียวกับหน้า Assign Names: [ON] ชื่องาน — ลูกค้า · สถานที่
   // (พิมพ์ ON Number / ชื่องาน / ลูกค้า เพื่อค้นได้ในช่องเดียว)
   const projectOptions = useMemo(() => {
     const m = new Map();
-    rows.forEach((r) => {
+    scopedRows.forEach((r) => {
       if (!r.projectId || m.has(r.projectId)) return;
       const start = r.projectStartDate || r.startDate;
       const tail = [r.client, r.location, start && `Start ${fmtDayY(start)}`]
@@ -180,27 +183,37 @@ export default function ManpowerRequirements() {
       if (seen[o.label] > 1) o.label += ` · #${o.value.slice(-6)}`;
     });
     return [...m.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [rows]);
+  }, [scopedRows]);
+
+  // project ที่เลือกไว้ไม่ใช่ของลูกค้าที่เลือกแล้ว → ล้าง
+  useEffect(() => {
+    if (!loading && projectId && !projectOptions.some((o) => o.value === projectId)) {
+      setProjectId("");
+      setPosition("");
+    }
+  }, [loading, projectId, projectOptions]);
+
+  // เปลี่ยนลูกค้า → กลับหน้า 1
+  useEffect(() => setPage(1), [selectedClient]);
   // ตำแหน่ง (นับจำนวนแถว) — จำกัดตามโปรเจกต์ที่เลือกอยู่
   const positionOptions = useMemo(() => {
     const m = new Map();
-    rows
+    scopedRows
       .filter((r) => !projectId || r.projectId === projectId)
       .forEach((r) => r.position && m.set(r.position, (m.get(r.position) || 0) + 1));
     return [...m.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([p, n]) => ({ value: p, label: `${p} (${n})` }));
-  }, [rows, projectId]);
+  }, [scopedRows, projectId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows
+    return scopedRows
       .filter((r) => {
         if (scope === "active" && isEnded(r)) return false;
         if (scope === "ended" && !isEnded(r)) return false;
         if (fill === "open" && r.assigned >= r.quantity) return false;
         if (fill === "filled" && r.assigned < r.quantity) return false;
-        if (client && r.client !== client) return false;
         if (projectId && r.projectId !== projectId) return false;
         if (position && r.position !== position) return false;
         if (!q) return true;
@@ -223,12 +236,12 @@ export default function ManpowerRequirements() {
           String(a.projectCode).localeCompare(String(b.projectCode)) ||
           String(a.position).localeCompare(String(b.position)),
       );
-  }, [rows, search, scope, fill, client, projectId, position]);
+  }, [scopedRows, search, scope, fill, projectId, position]);
 
   // ตำแหน่งที่ถูกซ่อนเพราะ "Active" (วันจบงานผ่านไปแล้ว) — บอกให้รู้ จะได้ไม่งงว่าหายไปไหน
   const hiddenEnded = useMemo(
-    () => (scope === "active" ? rows.filter(isEnded).length : 0),
-    [rows, scope],
+    () => (scope === "active" ? scopedRows.filter(isEnded).length : 0),
+    [scopedRows, scope],
   );
 
   const totals = useMemo(() => {
@@ -246,12 +259,11 @@ export default function ManpowerRequirements() {
   };
   const searchQ = search.trim().toLowerCase();
   const hasFilter =
-    search || fill !== "all" || client || projectId || position || scope !== "active";
+    search || fill !== "all" || projectId || position || scope !== "active";
   const resetFilters = () => {
     setSearch("");
     setScope("active");
     setFill("all");
-    setClient("");
     setProjectId("");
     setPosition("");
     setPage(1);
@@ -372,7 +384,11 @@ export default function ManpowerRequirements() {
           />
         </div>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+            isMultiClient ? "lg:grid-cols-4" : "lg:grid-cols-3"
+          }`}
+        >
         <div className="min-w-0">
           <label className={LABEL}>Position</label>
           <Select
@@ -389,17 +405,8 @@ export default function ManpowerRequirements() {
             noOptionsMessage={() => "ไม่พบตำแหน่ง"}
           />
         </div>
-        <div className="min-w-0">
-          <label className={LABEL}>Client</label>
-          <select value={client} onChange={onFilter(setClient)} className={`${FIELD} w-full`}>
-            <option value="">ทุกลูกค้า</option>
-            {clients.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar (ปุ่ม ล้างทั้งหมด ไม่ล้างค่านี้) */}
+        <ClientFilter />
         <div className="min-w-0">
           <label className={LABEL}>Period</label>
           <select value={scope} onChange={onFilter(setScope)} className={`${FIELD} w-full`}>
@@ -455,7 +462,11 @@ export default function ManpowerRequirements() {
             ) : paged.length === 0 ? (
               <tr>
                 <td colSpan={9} className="p-10 text-center text-[13px] text-gray-500">
-                  {hasFilter ? "ไม่พบตำแหน่งตามเงื่อนไขที่เลือก" : "ยังไม่มี requirement — กด + New requirement"}
+                  {hasFilter
+                    ? "ไม่พบตำแหน่งตามเงื่อนไขที่เลือก"
+                    : selectedClient
+                      ? `ไม่มี requirement ของ ${selectedClient.name}`
+                      : "ยังไม่มี requirement — กด + New requirement"}
                 </td>
               </tr>
             ) : (

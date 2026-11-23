@@ -11,8 +11,16 @@ import logo from "../../assets/experteam-logo.png";
 
 const Navbar = ({ onMenuClick }) => {
   const navigate = useNavigate();
-  const { userData, backendUrl, setIsLoggedin, setUserData } =
-    useContext(AppContent);
+  const {
+    userData,
+    backendUrl,
+    setIsLoggedin,
+    setUserData,
+    isMultiClient,
+    clients,
+    clientFilter,
+    setClientFilter,
+  } = useContext(AppContent);
 
   const [openNotif, setOpenNotif] = useState(false);
   const [openUser, setOpenUser] = useState(false);
@@ -134,6 +142,33 @@ const Navbar = ({ onMenuClick }) => {
         <span className="hidden rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-indigo-100 sm:inline">
           Experteam
         </span>
+
+        {/* ตัวเลือกลูกค้า — โหมด multi เท่านั้น (โหมด single = Chevron อย่างเดียว ไม่แสดง)
+            ค่าเดียวกับช่อง Client ในหน้าต่างๆ · จำไว้ในเบราว์เซอร์ */}
+        {isMultiClient && (
+          <label
+            className="flex min-w-0 shrink items-center gap-1.5"
+            title="เลือกลูกค้า — ทุกหน้าที่มีตัวกรอง Client จะแสดงเฉพาะลูกค้านี้"
+          >
+            <span className="hidden text-xs text-indigo-200 md:inline">Client</span>
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              className={`h-7 min-w-0 max-w-[120px] cursor-pointer rounded-md border px-1.5 text-xs font-semibold text-white outline-none sm:max-w-[160px] [&>option]:text-gray-900 ${
+                clientFilter !== "all"
+                  ? "border-[#F9A26C] bg-[#F9A26C]/25"
+                  : "border-white/25 bg-white/10 hover:bg-white/15"
+              }`}
+            >
+              <option value="all">ทุกลูกค้า</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       {/* RIGHT */}

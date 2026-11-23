@@ -15,6 +15,8 @@ import {
   nameTH,
 } from "../../utils/workerSearch";
 import TrainingPlanNotice, { useEmployeeTrainingPlan, findPlan, PlanTag } from "../../components/TrainingPlanNotice";
+import ClientFilter from "../../components/ClientFilter";
+import { sameClient, clientRank } from "../../utils/clientMode";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -109,14 +111,22 @@ const MEDICAL_STATUS_LABEL = {
   not_required: "Fit w/ Restriction",
 };
 
-const TABLE_HEADERS = [
+// คอลัมน์สุดท้าย: โหมด single = CHEVRON MATCH · multi = ลูกค้าที่เลือก / CLIENT MATCH (ทุกลูกค้า)
+const tableHeaders = (matchLabel) => [
   ["WORKER", "text-left", "w-[15%]"],
   ["POSITION", "text-left", "w-[20%]"],
   ["DEPARTMENT", "text-left", "w-[12%]"],
   ["TRAINING ALERTS", "text-center", "w-[19%]"],
   ["MEDICAL", "text-center", "w-[17%]"],
-  ["CHEVRON MATCH", "text-center", "w-[17%]"],
+  [matchLabel, "text-center", "w-[17%]"],
 ];
+
+// w.clients = { chevron: {...}, erawan: {...} } (key ตัวเล็ก) → [key, ข้อมูล] ของลูกค้านี้
+const clientEntryOf = (clients, name) => {
+  const key = Object.keys(clients || {}).find((k) => sameClient(k, name));
+  return key ? [key, clients[key]] : null;
+};
+const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // key ของ HR request ที่ส่งไปแล้วในรอบนี้ (กันกดซ้ำ)
 const reqKey = (employeeId, trainingId) => `${employeeId}:${trainingId}`;
@@ -420,7 +430,17 @@ function Modal({ maxW, title, subtitle, headerRight, onClose, children }) {
 // main
 // ══════════════════════════════════════════════════════════
 export default function ComplianceDashboard() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, isMultiClient, selectedClient } = useContext(AppContent);
+  // โหมด multi: % Match ของลูกค้าที่เลือก (Worker Pool ใช้ร่วม — ไม่ซ่อนพนักงาน)
+  const matchLabel = !isMultiClient
+    ? "CHEVRON MATCH"
+    : selectedClient
+      ? `${selectedClient.name.toUpperCase()} MATCH`
+      : "CLIENT MATCH";
+  const TABLE_HEADERS = tableHeaders(matchLabel);
+  // ลูกค้าที่แนบไปกับคำขอ training / medical
+  const requestClientName = (w) =>
+    isMultiClient && selectedClient ? selectedClient.name : clientNameOf(w);
 
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -543,7 +563,7 @@ export default function ComplianceDashboard() {
       setSelectedAlert({
         ...res.data,
         workerId: w.id,
-        clientName: clientNameOf(w),
+        clientName: requestClientName(w),
       });
     } catch (error) {
       console.error(error);
@@ -609,7 +629,7 @@ export default function ComplianceDashboard() {
             {
               employeeId: w.id,
               checkType: checkType || MAIN_CHECK,
-              clientName: clientNameOf(w),
+              clientName: requestClientName(w),
               reason: daysLeft < 0 ? "overdue" : "due_soon",
             },
           ],
@@ -748,16 +768,60 @@ export default function ComplianceDashboard() {
     );
   };
 
-  const renderChevron = (w) => (
-    <div className="flex flex-col items-center gap-1">
-      <ClientCell {...(w.clients?.chevron ?? { completed: null })} />
-      {w.clients?.chevron && w.clients.chevron.completed !== null && (
-        <span onClick={() => handleViewGap(w.id)} className={LINK}>
-          🔍 ดู Gap →
-        </span>
-      )}
-    </div>
+  const gapLink = (w) => (
+    <span onClick={() => handleViewGap(w.id)} className={LINK}>
+      🔍 ดู Gap →
+    </span>
   );
+
+  const renderChevron = (w) => {
+    // โหมด multi + ทุกลูกค้า → บรรทัดละลูกค้า: ชื่อ · % Match
+    if (isMultiClient && !selectedClient) {
+      const entries = Object.entries(w.clients || {})
+        .filter(([, c]) => c && c.completed !== null)
+        .sort(([a], [b]) => clientRank(a) - clientRank(b));
+      if (!entries.length) return <span className="text-gray-500">—</span>;
+      return (
+        <div className="flex flex-col items-center gap-0.5">
+          {entries.map(([k, c]) => (
+            <div key={k} className="whitespace-nowrap text-[11px]">
+              <span className="text-gray-500">{capitalize(k)}</span>{" "}
+              <b
+                className={
+                  c.missing === 0
+                    ? "text-[#198754]"
+                    : c.score >= 60
+                      ? "text-[#cc8400]"
+                      : "text-[#dc3545]"
+                }
+              >
+                {c.score}%
+              </b>
+            </div>
+          ))}
+          {gapLink(w)}
+        </div>
+      );
+    }
+    const c = isMultiClient
+      ? clientEntryOf(w.clients, selectedClient.name)?.[1]
+      : w.clients?.chevron;
+    if (isMultiClient && !c)
+      return (
+        <span
+          className="text-[11px] font-semibold text-[#b08900]"
+          title={`ยังไม่มี Training Matrix ของ ${selectedClient.name} สำหรับตำแหน่งนี้`}
+        >
+          ⚠ No Matrix
+        </span>
+      );
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <ClientCell {...(c ?? { completed: null })} />
+        {c && c.completed !== null && gapLink(w)}
+      </div>
+    );
+  };
 
   const renderMedical = (w) => {
     const med = getMedical(w);
@@ -972,7 +1036,15 @@ export default function ComplianceDashboard() {
       </div>
 
       {/* ════════ Filters — คั่นด้วยเส้น ════════ */}
-      <div className="grid grid-cols-1 gap-3 border-b border-gray-200 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)] lg:items-end">
+      <div
+        className={`grid grid-cols-1 gap-3 border-b border-gray-200 py-3 sm:grid-cols-2 lg:items-end ${
+          isMultiClient
+            ? "lg:grid-cols-[150px_minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)]"
+            : "lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)]"
+        }`}
+      >
+        {/* โหมด multi เท่านั้น — เปลี่ยนคอลัมน์ % Match เป็นของลูกค้าที่เลือก (ไม่ซ่อนพนักงาน) */}
+        <ClientFilter />
         <div className="min-w-0">
           <label className={FILTER_LABEL}>
             Worker{" "}
@@ -1084,7 +1156,7 @@ export default function ComplianceDashboard() {
                     {[
                       ["Training", renderAlerts(w)],
                       ["Medical", renderMedical(w)],
-                      ["Chevron", renderChevron(w)],
+                      [isMultiClient ? selectedClient?.name || "Client" : "Chevron", renderChevron(w)],
                     ].map(([label, content]) => (
                       <div key={label} className="min-w-0 text-center">
                         <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.5px] text-gray-400">
@@ -1170,7 +1242,10 @@ export default function ComplianceDashboard() {
 
       {/* ════════ Gap Modal — Mandatory / Assigned / Others ════════ */}
       {selectedGap && (() => {
-        const clientEntries = Object.entries(selectedGap.clients || {});
+        // โหมด multi + เลือกลูกค้า → แสดงเฉพาะลูกค้านั้น
+        const clientEntries = Object.entries(selectedGap.clients || {})
+          .filter(([k]) => !(isMultiClient && selectedClient) || sameClient(k, selectedClient.name))
+          .sort(([a], [b]) => clientRank(a) - clientRank(b));
         const single = clientEntries.length === 1;
 
         // % Match อิงจาก Mandatory เท่านั้น (ตรงกับคอลัมน์ CHEVRON MATCH)
@@ -1212,6 +1287,12 @@ export default function ComplianceDashboard() {
             onClose={() => setSelectedGap(null)}
           >
             <TrainingPlanNotice plans={empPlan.plans} loading={empPlan.loading} className="mb-3" />
+            {clientEntries.length === 0 && (
+              <div className="p-6 text-center text-[13px] text-gray-500">
+                ยังไม่มี Training Matrix
+                {selectedClient ? ` ของ ${selectedClient.name}` : ""} สำหรับตำแหน่งนี้
+              </div>
+            )}
             {clientEntries.map(([clientName, client]) => {
               const mandatory = client.mandatory ?? EMPTY_GROUP;
               const assigned = client.assigned ?? EMPTY_GROUP;

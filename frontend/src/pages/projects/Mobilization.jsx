@@ -4,6 +4,7 @@ import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
 import { Link, useSearchParams } from "react-router-dom";
+import ClientFilter from "../../components/ClientFilter";
 
 const DEMOB_DAYS = 28;
 
@@ -576,7 +577,8 @@ function IconBtn({ title, onClick, big, children }) {
 // main
 // ══════════════════════════════════════════════════════════
 export default function Mobilization() {
-  const { backendUrl, userData } = useContext(AppContent);
+  const { backendUrl, userData, isMultiClient, clientMatches, selectedClient } =
+    useContext(AppContent);
   const [searchParams] = useSearchParams();
 
   // ทุกคนที่ login เข้ามาจัดการหน้านี้ได้เต็มสิทธิ์ (สิทธิ์เข้าหน้าคุมที่ AppRouter)
@@ -1180,18 +1182,32 @@ export default function Mobilization() {
   // ===========================================================
   // Derived
   // ===========================================================
-  const projectOptions = projects.map((p) => {
-    const codePart = p.masterProjectRecord?.projectCode
-      ? `[${p.masterProjectRecord.projectCode}] `
-      : "";
-    const parts = [];
-    if (p.location) parts.push(p.location);
-    if (p.startDate) parts.push(`Start ${fmtShort(p.startDate)}`);
-    const disambiguator = parts.length
-      ? parts.join(" · ")
-      : `#${p.id.slice(-6)}`;
-    return { value: p.id, label: `${codePart}${p.name} · ${disambiguator}` };
-  });
+  // โหมด multi: แสดงเฉพาะโปรเจกต์ของลูกค้าที่เลือก + ชื่อลูกค้าในรายการ
+  //   โปรเจกต์ที่เลือกค้างไว้ยังอยู่ในรายการเสมอ (เปลี่ยนลูกค้าแล้วงานที่ทำอยู่ไม่หาย)
+  const projectOptions = projects
+    .filter(
+      (p) =>
+        p.id === selectedProjectId || clientMatches(p.contract?.client?.name),
+    )
+    .map((p) => {
+      const codePart = p.masterProjectRecord?.projectCode
+        ? `[${p.masterProjectRecord.projectCode}] `
+        : "";
+      const clientPart =
+        isMultiClient && p.contract?.client?.name
+          ? ` — ${p.contract.client.name}`
+          : "";
+      const parts = [];
+      if (p.location) parts.push(p.location);
+      if (p.startDate) parts.push(`Start ${fmtShort(p.startDate)}`);
+      const disambiguator = parts.length
+        ? parts.join(" · ")
+        : `#${p.id.slice(-6)}`;
+      return {
+        value: p.id,
+        label: `${codePart}${p.name}${clientPart} · ${disambiguator}`,
+      };
+    });
 
   const readyCount = useMemo(() => rows.filter(isReady).length, [rows]);
   const deployedCount = useMemo(
@@ -1886,6 +1902,8 @@ export default function Mobilization() {
       {/* ════════ เลือก Project · ตำแหน่ง · Deploy (แถวเดียว) ════════ */}
       <div className="border-y border-gray-200 py-3">
         <div className="flex flex-wrap items-end gap-3">
+          {/* โหมด multi เท่านั้น — โหมด single ไม่แสดง */}
+          <ClientFilter className="w-full sm:w-[170px] sm:shrink-0" />
           <div className="w-full sm:min-w-[280px] sm:max-w-[700px] sm:flex-1">
             <label className={FILTER_LABEL}>Select Project</label>
             <Select
@@ -1905,7 +1923,11 @@ export default function Mobilization() {
               }}
               placeholder="-- Select Project --"
               isClearable
-              noOptionsMessage={() => "No projects found"}
+              noOptionsMessage={() =>
+                selectedClient
+                  ? `ไม่มีโปรเจกต์ของ ${selectedClient.name}`
+                  : "No projects found"
+              }
             />
           </div>
 

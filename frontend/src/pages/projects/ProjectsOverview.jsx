@@ -3,12 +3,12 @@ import {
   useEffect,
   useLayoutEffect,
   useContext,
-  useMemo,
   useRef,
 } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
+import ClientFilter from "../../components/ClientFilter";
 import {
   fmtShort,
   projectCode,
@@ -123,8 +123,10 @@ const TL_ROW_H = 44;
 // ความกว้างต่อวัน — ช่วงยาว = แคบลง (เลื่อนแนวนอนได้เมื่อเกินจอ)
 const dayWidthFor = (days) => (days > 240 ? 4 : days > 120 ? 7 : days > 60 ? 12 : days > 31 ? 20 : 28);
 
+// Client = ค่าเดียวกับ Navbar (โหมด multi) — กรองทั้งตาราง / Timeline / ตัวเลขบนแท็บ · โหมด single ไม่มีช่องนี้
 export default function ProjectsOverview() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, isMultiClient, selectedClient, clientMatches } =
+    useContext(AppContent);
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -133,7 +135,6 @@ export default function ProjectsOverview() {
   const [datePreset, setDatePreset] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [clientFilter, setClientFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [view, setViewState] = useState(readView);
   const setView = (v) => {
@@ -237,7 +238,7 @@ export default function ProjectsOverview() {
   const stageKeyOf = (p) => p.currentStage?.key || "complete";
 
   const matchesFilters = (p) => {
-    if (clientFilter && p.client !== clientFilter) return false;
+    if (selectedClient && !clientMatches(p.client)) return false;
     if (stageFilter && stageKeyOf(p) !== stageFilter) return false;
     if (dateFrom || dateTo) {
       const start = toYMD(p.startDate);
@@ -255,16 +256,7 @@ export default function ProjectsOverview() {
     );
   };
 
-  const clientOptions = useMemo(() => {
-    if (!data) return [];
-    const all = TABS.flatMap((t) => data[t.key] || []);
-    return [...new Set(all.map((p) => p.client).filter(Boolean))].sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [data]);
-
-  const hasFilter =
-    search || dateFrom || dateTo || clientFilter || stageFilter;
+  const hasFilter = search || dateFrom || dateTo || stageFilter;
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -276,14 +268,13 @@ export default function ProjectsOverview() {
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [loading, hasFilter, activeTab, view]);
+  }, [loading, hasFilter, activeTab, view, selectedClient]);
 
   const resetFilters = () => {
     setSearch("");
     setDatePreset("all");
     setDateFrom("");
     setDateTo("");
-    setClientFilter("");
     setStageFilter("");
   };
 
@@ -397,7 +388,13 @@ export default function ProjectsOverview() {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1.2fr]">
+        <div
+          className={`mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+            isMultiClient ? "lg:grid-cols-[160px_2fr_1.2fr]" : "lg:grid-cols-[2fr_1.2fr]"
+          }`}
+        >
+          {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar (ปุ่ม ล้าง filter ไม่ล้างค่านี้) */}
+          <ClientFilter />
           <div className="min-w-0">
             <label className={FILTER_LABEL}>ค้นหา</label>
             <input
@@ -407,21 +404,6 @@ export default function ProjectsOverview() {
               placeholder="ON Number / ชื่อ requirement / client / location..."
               className={FIELD}
             />
-          </div>
-          <div className="min-w-0">
-            <label className={FILTER_LABEL}>Client</label>
-            <select
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
-              className={FIELD}
-            >
-              <option value="">ทั้งหมด</option>
-              {clientOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
           </div>
           <div className="min-w-0">
             <label className={FILTER_LABEL}>ขั้นตอนปัจจุบัน</label>
@@ -507,7 +489,9 @@ export default function ProjectsOverview() {
           <div className="p-12 text-center text-[13px] text-gray-500">
             {hasFilter
               ? "ไม่พบ requirement ตามเงื่อนไขที่เลือก"
-              : "ไม่มี requirement ในหมวดนี้"}
+              : selectedClient
+                ? `ไม่มี requirement ของ ${selectedClient.name} ในหมวดนี้`
+                : "ไม่มี requirement ในหมวดนี้"}
           </div>
         ) : view === "timeline" ? (
           <div className="py-3">
@@ -613,6 +597,7 @@ export default function ProjectsOverview() {
                           </div>
                           <div className="truncate text-[11px] text-gray-500">
                             ● {p.currentStage?.label || "Complete"}
+                            {isMultiClient && !selectedClient && p.client ? ` · ${p.client}` : ""}
                             {p.location ? ` · ${p.location}` : ""}
                           </div>
                         </div>

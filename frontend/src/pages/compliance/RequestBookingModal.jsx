@@ -66,14 +66,24 @@ export default function RequestBookingModal({
   initialClients,
   pendingKeys,
 }) {
-  const { backendUrl } = useContext(AppContent);
+  // โหมด multi: ตัวเลือกบริษัท = ลูกค้าทั้งหมดในระบบ และเลือกลูกค้าที่เลือกบน Navbar ไว้ให้
+  const {
+    backendUrl,
+    isMultiClient,
+    clients: allClients,
+    selectedClient,
+  } = useContext(AppContent);
   const isTraining = type === "training";
 
-  const [clients, setClients] = useState([]);
+  const [projectClients, setProjectClients] = useState([]);
+  const clients =
+    isMultiClient && allClients.length ? allClients.map((c) => c.name) : projectClients;
   const [courses, setCourses] = useState([]);
   const [workers, setWorkers] = useState([]);
 
-  const [clientName, setClientName] = useState("");
+  const [clientName, setClientName] = useState(
+    isMultiClient && selectedClient ? selectedClient.name : "",
+  );
   const [course, setCourse] = useState(null);
   const [checkType, setCheckType] = useState(initialCheckType || MAIN_CHECK);
   const checkTypes = [
@@ -94,7 +104,7 @@ export default function RequestBookingModal({
     axios
       .get(`${backendUrl}/api/allocation/projects`, { withCredentials: true })
       .then((res) =>
-        setClients(
+        setProjectClients(
           [
             ...new Set(
               (res.data || []).map((p) => p.contract?.client?.name).filter(Boolean),
@@ -102,7 +112,7 @@ export default function RequestBookingModal({
           ].sort(),
         ),
       )
-      .catch(() => setClients([]));
+      .catch(() => setProjectClients([]));
     if (isTraining)
       axios
         .get(`${backendUrl}/api/trainings/global`, { withCredentials: true })

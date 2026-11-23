@@ -4,9 +4,11 @@ import { buildPeTrackingWorkbook } from "../scripts/chevron/lib/buildPeTrackingW
 
 const prisma = new PrismaClient();
 
+// GET /api/analytics?clientId=...  (clientId optional — โหมด multi: นับ Projects เฉพาะลูกค้านั้น)
 export async function getAnalytics(req, res) {
   try {
-    const data = await service.getAnalytics();
+    const { clientId } = req.query;
+    const data = await service.getAnalytics({ clientId });
     res.json(data);
   } catch (error) {
     console.error(error);
@@ -14,11 +16,13 @@ export async function getAnalytics(req, res) {
   }
 }
 
-// GET /api/analytics/deployment?year=2026&quarter=3  (quarter optional — ไม่ใส่ = ทั้งปี, ไม่ใส่ year เลย = all-time)
+// GET /api/analytics/deployment?year=2026&quarter=3&clientId=...
+//   quarter optional — ไม่ใส่ = ทั้งปี, ไม่ใส่ year เลย = all-time
+//   clientId optional — ไม่ใส่ = ทุกลูกค้า
 export async function getDeploymentReport(req, res) {
   try {
-    const { year, quarter } = req.query;
-    const data = await service.getDeploymentReport({ year, quarter });
+    const { year, quarter, clientId } = req.query;
+    const data = await service.getDeploymentReport({ year, quarter, clientId });
     res.json(data);
   } catch (error) {
     console.error(error);

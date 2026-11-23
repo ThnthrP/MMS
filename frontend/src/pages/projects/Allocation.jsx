@@ -6,6 +6,7 @@ import { AppContent } from "../../context/AppContext";
 import { MEDICAL_BUCKETS, expiryBucket, requestReason } from "../../utils/medicalStatus";
 import useStickyState from "../../hooks/useStickyState";
 import TrainingPlanNotice, { useEmployeeTrainingPlan, findPlan, PlanTag } from "../../components/TrainingPlanNotice";
+import ClientFilter from "../../components/ClientFilter";
 import {
   buildWorkerOptions,
   filterWorkerOption,
@@ -776,7 +777,7 @@ function MatchCell({
 // main
 // ══════════════════════════════════════════════════════════
 export default function Allocation() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, clientMatches, selectedClient } = useContext(AppContent);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -1186,7 +1187,14 @@ export default function Allocation() {
     { pending: 0, approved: 0, rejected: 0 },
   );
 
-  const projectOptions = projects.map((p) => {
+  // โหมด multi: แสดงเฉพาะโปรเจกต์ของลูกค้าที่เลือก (ตัวกรอง Client / Navbar)
+  //   โปรเจกต์ที่เลือกค้างไว้ยังอยู่ในรายการเสมอ — เปลี่ยนลูกค้าแล้วงานที่ทำอยู่ไม่หาย
+  const projectOptions = projects
+    .filter(
+      (p) =>
+        p.id === selectedProjectId || clientMatches(p.contract?.client?.name),
+    )
+    .map((p) => {
     const codePart = p.masterProjectRecord?.projectCode
       ? `[${p.masterProjectRecord.projectCode}] `
       : "";
@@ -1934,6 +1942,8 @@ export default function Allocation() {
       <div className="mx-auto w-full min-w-0 max-w-[1800px]">
         {/* ════════ แถบบน: โปรเจกต์ + เอกสาร ════════ */}
         <div className="flex flex-col gap-3 border-b border-gray-200 pb-3 lg:flex-row lg:items-end">
+          {/* โหมด multi เท่านั้น — โหมด single ไม่แสดง */}
+          <ClientFilter className="lg:w-[170px] lg:shrink-0" />
           <div className="min-w-0 flex-1">
             <label className={LABEL}>Project</label>
             <Select
@@ -1954,7 +1964,11 @@ export default function Allocation() {
               }}
               placeholder="-- เลือกโปรเจกต์ --"
               isClearable
-              noOptionsMessage={() => "No projects found"}
+              noOptionsMessage={() =>
+                selectedClient
+                  ? `ไม่มีโปรเจกต์ของ ${selectedClient.name}`
+                  : "No projects found"
+              }
             />
           </div>
           <div className="flex flex-wrap gap-1.5">

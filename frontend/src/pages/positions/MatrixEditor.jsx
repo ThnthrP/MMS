@@ -1,6 +1,8 @@
 import { useState, useEffect, useContext, useCallback } from "react";
 import axios from "axios";
 import { AppContent } from "../../context/AppContext";
+import ClientFilter from "../../components/ClientFilter";
+import { contractClientName } from "../../utils/clientMode";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -297,8 +299,11 @@ function LinkTrainingModal({ backendUrl, contractId, onClose, onLinked }) {
 // ══════════════════════════════════════════════════════════
 // main
 // ══════════════════════════════════════════════════════════
+// โหมด multi: ลูกค้า (ค่าเดียวกับ Navbar) อยู่หน้าสุด → CONTRACT แสดงเฉพาะของลูกค้านั้น
+//   เปลี่ยนลูกค้าตอนยังไม่ Save → ไม่เปลี่ยน contract ให้ (กันงานหาย) แต่ขึ้นข้อความเตือน
 export default function MatrixEditor() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, clients, selectedClient, clientMatches } =
+    useContext(AppContent);
 
   const [contracts, setContracts] = useState([]);
   const [positions, setPositions] = useState([]);
@@ -318,6 +323,26 @@ export default function MatrixEditor() {
 
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [positionCounts, setPositionCounts] = useState({}); // { [positionId]: count }
+
+  const contractClient = (c) => contractClientName(c, clients);
+  const shownContracts = contracts.filter(
+    (c) => !selectedClient || clientMatches(contractClient(c)),
+  );
+
+  // contract ที่เปิดอยู่ไม่ใช่ของลูกค้าที่เลือก → เปลี่ยนเป็น contract แรกของลูกค้านั้น
+  useEffect(() => {
+    if (loadingLists || !contracts.length) return;
+    if (shownContracts.some((c) => c.id === contractId)) return;
+    if (dirty) {
+      setMsg({
+        type: "err",
+        text: `กำลังแก้ matrix ของ contract อื่นอยู่ — กด Save Matrix ก่อน แล้วค่อยเลือก contract ของ ${selectedClient?.name ?? "ลูกค้าที่เลือก"}`,
+      });
+      return;
+    }
+    setContractId(shownContracts[0]?.id || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingLists, contracts, selectedClient, clients]);
 
   useEffect(() => writeLS(LS_CONTRACT, contractId), [contractId]);
   useEffect(() => writeLS(LS_POSITION, positionId), [positionId]);
@@ -524,8 +549,10 @@ export default function MatrixEditor() {
       {/* ════════ Selectors + Link Training — แถวเดียว คั่นด้วยเส้น ════════
           การ link training เข้า contract ใช้แค่ contractId
           จึงโชว์ปุ่มทันทีที่เลือก contract (ไม่ต้องเลือก position ก่อน) */}
-      <div className="mb-4 grid grid-cols-1 gap-3 border-y border-gray-200 py-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-        <div className="min-w-0">
+      <div className="mb-4 flex flex-col gap-3 border-y border-gray-200 py-3 md:flex-row md:items-end">
+        {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar */}
+        <ClientFilter className="md:w-[160px] md:shrink-0" />
+        <div className="min-w-0 md:flex-1">
           <label className={LABEL}>CONTRACT</label>
           <select
             value={contractId}
@@ -533,15 +560,19 @@ export default function MatrixEditor() {
             disabled={loadingLists}
             className={INPUT}
           >
-            <option value="">— เลือก contract —</option>
-            {contracts.map((c) => (
+            <option value="">
+              {selectedClient && shownContracts.length === 0
+                ? `— ${selectedClient.name} ยังไม่มี contract —`
+                : "— เลือก contract —"}
+            </option>
+            {shownContracts.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.contractNo})
               </option>
             ))}
           </select>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 md:flex-1">
           <label className={LABEL}>POSITION</label>
           <select
             value={positionId}

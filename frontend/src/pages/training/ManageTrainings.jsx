@@ -2,6 +2,8 @@ import { useState, useEffect, useContext, useCallback, useRef } from "react";
 import axios from "axios";
 import Select from "react-select";
 import { AppContent } from "../../context/AppContext";
+import ClientFilter from "../../components/ClientFilter";
+import { sameClient } from "../../utils/clientMode";
 
 // ══════════════════════════════════════════════════════════
 // helpers
@@ -516,7 +518,8 @@ function CertsModal({ backendUrl, training, onClose, onEditTraining, onChanged }
 // main
 // ══════════════════════════════════════════════════════════
 export default function ManageTrainings() {
-  const { backendUrl } = useContext(AppContent);
+  // selectedClient = ลูกค้าที่เลือกบน Navbar / ช่อง Client (โหมด multi) — null = ทุกลูกค้า
+  const { backendUrl, selectedClient } = useContext(AppContent);
 
   // ----- list -----
   const [trainings, setTrainings] = useState([]);
@@ -537,7 +540,19 @@ export default function ManageTrainings() {
   const visibleClients = clients
     .filter((c) => clientRank(c) >= 0)
     .sort((a, b) => clientRank(a) - clientRank(b));
+  // คอลัมน์ที่แสดง: ทุกลูกค้า = ครบ 4 คอลัมน์ · เลือกลูกค้า = คอลัมน์ของลูกค้านั้นคอลัมน์เดียว
+  const shownClients = selectedClient
+    ? visibleClients.filter((c) => sameClient(c.name, selectedClient.name))
+    : visibleClients;
   const [togglingKey, setTogglingKey] = useState(null); // `${trainingId}|${clientId}` ที่กำลังบันทึก
+
+  // เปลี่ยนลูกค้า → ตัวกรอง "ใช้ / ไม่ได้ใช้ใน <ลูกค้าอื่น>" ไม่ตรงแล้ว ล้างออก
+  useEffect(() => {
+    if (!selectedClient) return;
+    const cid = clientFilter.split(":")[1];
+    if (cid && !shownClients.some((c) => c.id === cid)) setClientFilter("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClient]);
 
   // ----- training sources -----
   const [sources, setSources] = useState([]);
@@ -1033,14 +1048,15 @@ export default function ManageTrainings() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const sourceOptions = sources.map((s) => ({ value: s.name, label: s.name }));
   const pick = (opts, v) => opts.find((o) => o.value === v) || null;
-  // single: ใช้ใน Chevron / ไม่ได้ใช้ (เหมือนเดิม) · multi: แยกกลุ่มต่อ client + ยังไม่ผูกลูกค้าใดเลย
+  // single: ใช้ใน Chevron / ไม่ได้ใช้ (เหมือนเดิม)
+  // multi: เฉพาะลูกค้าที่เลือก (หรือทุกลูกค้าถ้าเลือก "ทุกลูกค้า") + ยังไม่ผูกลูกค้าใดเลย
   const clientOptions = MULTI_CLIENT
     ? [
-        { value: "none", label: "⚠ ยังไม่ผูกลูกค้าใดเลย" },
-        ...visibleClients.flatMap((c) => [
+        ...shownClients.flatMap((c) => [
           { value: `used:${c.id}`, label: `ใช้ใน ${c.name}` },
           { value: `unused:${c.id}`, label: `ไม่ได้ใช้ใน ${c.name}` },
         ]),
+        { value: "none", label: "⚠ ยังไม่ผูกลูกค้าใดเลย" },
       ]
     : visibleClients.flatMap((c) => [
         { value: `used:${c.id}`, label: `ใช้ใน ${c.name}` },
@@ -1125,7 +1141,10 @@ export default function ManageTrainings() {
           <span>
             จัดการ training กลาง (ชั่วโมงอบรม/อายุ cert/source) — 1 training ต่อ
             1 standard
-            {MULTI_CLIENT && " · ติ๊กช่องลูกค้าว่า training ไหนใช้กับลูกค้าเจ้าไหน (วงเล็บ = จำนวนตำแหน่งใน matrix)"}
+            {MULTI_CLIENT &&
+              (selectedClient
+                ? ` · ติ๊กว่า training ไหนใช้กับ ${selectedClient.name} (วงเล็บ = จำนวนตำแหน่งใน matrix) · เลือก "ทุกลูกค้า" เพื่อดูครบทุกเจ้า`
+                : " · ติ๊กช่องลูกค้าว่า training ไหนใช้กับลูกค้าเจ้าไหน (วงเล็บ = จำนวนตำแหน่งใน matrix)")}
           </span>
           {!loadingList && (
             <span>
@@ -1148,8 +1167,17 @@ export default function ManageTrainings() {
       </div>
 
       {/* ════════ Search & Filter — label กำกับทุกช่อง คั่นด้วยเส้น ════════
-          มือถือ 1 / sm 2 / lg+ 5 ช่องในแถวเดียว (ช่อง Training กว้างสุด) */}
-      <div className="grid grid-cols-1 gap-3 border-y border-gray-200 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))]">
+          ลำดับ: Client (โหมด multi — ขอบเขตของทั้งหน้า) → Training → การใช้งานกับลูกค้า → Source → Set up → Cert
+          "ล้างทั้งหมด" ไม่ล้างช่อง Client (ค่าเดียวกับ Navbar) */}
+      <div
+        className={`grid grid-cols-1 gap-3 border-y border-gray-200 py-3 sm:grid-cols-2 ${
+          MULTI_CLIENT
+            ? "lg:grid-cols-[150px_minmax(0,2fr)_minmax(0,1.2fr)_repeat(3,minmax(0,1fr))]"
+            : "lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))]"
+        }`}
+      >
+        {/* โหมด multi เท่านั้น */}
+        <ClientFilter />
         <div className="min-w-0 sm:col-span-2 lg:col-span-1">
           <label className={FILTER_LABEL}>
             Training{" "}
@@ -1168,6 +1196,21 @@ export default function ManageTrainings() {
             styles={FILTER_SELECT_STYLES}
             {...FILTER_MENU_PORTAL}
             noOptionsMessage={() => "ไม่พบ training"}
+          />
+        </div>
+        <div className="min-w-0">
+          <label className={FILTER_LABEL}>
+            {MULTI_CLIENT ? "การใช้งาน" : "ใช้ใน Chevron"}
+          </label>
+          <Select
+            options={clientOptions}
+            value={pickClientOption(clientFilter)}
+            onChange={(o) => setClientFilter(o ? o.value : "")}
+            placeholder={MULTI_CLIENT ? (selectedClient ? `All · ${selectedClient.name}` : "All") : "All"}
+            isClearable
+            isSearchable={MULTI_CLIENT}
+            styles={FILTER_SELECT_STYLES}
+            {...FILTER_MENU_PORTAL}
           />
         </div>
         <div className="min-w-0">
@@ -1197,21 +1240,8 @@ export default function ManageTrainings() {
           />
         </div>
         <div className="min-w-0">
-          <label className={FILTER_LABEL}>พนักงานที่มี cert</label>
-          <Select
-            options={CERT_OPTIONS}
-            value={pick(CERT_OPTIONS, certFilter)}
-            onChange={(o) => setCertFilter(o ? o.value : "")}
-            placeholder="All"
-            isClearable
-            isSearchable={false}
-            styles={FILTER_SELECT_STYLES}
-            {...FILTER_MENU_PORTAL}
-          />
-        </div>
-        <div className="min-w-0">
           <label className={`${FILTER_LABEL} flex items-center justify-between`}>
-            <span>{MULTI_CLIENT ? "Client" : "Chevron"}</span>
+            <span>พนักงานที่มี cert</span>
             {hasFilter && (
               <button
                 onClick={resetFilters}
@@ -1222,12 +1252,12 @@ export default function ManageTrainings() {
             )}
           </label>
           <Select
-            options={clientOptions}
-            value={pickClientOption(clientFilter)}
-            onChange={(o) => setClientFilter(o ? o.value : "")}
+            options={CERT_OPTIONS}
+            value={pick(CERT_OPTIONS, certFilter)}
+            onChange={(o) => setCertFilter(o ? o.value : "")}
             placeholder="All"
             isClearable
-            isSearchable={MULTI_CLIENT}
+            isSearchable={false}
             styles={FILTER_SELECT_STYLES}
             {...FILTER_MENU_PORTAL}
           />
@@ -1282,7 +1312,7 @@ export default function ManageTrainings() {
                         inline
                       />
                     </span>
-                    {visibleClients.map((c) => (
+                    {shownClients.map((c) => (
                       <span key={c.id} className="inline-flex items-center gap-1">
                         {c.name}: {renderClientCell(t, c)}
                       </span>
@@ -1322,7 +1352,7 @@ export default function ManageTrainings() {
                       <br />
                       (คน)
                     </th>
-                    {visibleClients.map((c) => (
+                    {shownClients.map((c) => (
                       <th
                         key={c.id}
                         className={`${TH} whitespace-nowrap px-2 text-center text-[10px] leading-snug`}
@@ -1381,7 +1411,7 @@ export default function ManageTrainings() {
                         onClick={() => setCertsTraining(t)}
                       />
                       </td>
-                      {visibleClients.map((c) => (
+                      {shownClients.map((c) => (
                         <td key={c.id} className="px-2 py-2 text-center">
                           {renderClientCell(t, c)}
                         </td>

@@ -4,6 +4,7 @@ import { AppContent } from "../../context/AppContext";
 import useStickyState from "../../hooks/useStickyState";
 import { Link, useSearchParams } from "react-router-dom";
 import Select from "react-select";
+import ClientFilter from "../../components/ClientFilter";
 
 // ══════════════════════════════════════════════════════════
 // constants
@@ -183,7 +184,9 @@ function RehirePicker({ value, touched, onChange, disabled }) {
 // main
 // ══════════════════════════════════════════════════════════
 export default function PostProjectReview() {
-  const { backendUrl, userData } = useContext(AppContent);
+  // Client = ค่าเดียวกับ Navbar (โหมด multi) — รายการโปรเจกต์ + ตัวเลขบนปุ่มสถานะ เฉพาะลูกค้าที่เลือก
+  const { backendUrl, userData, selectedClient, clientMatches } =
+    useContext(AppContent);
 
   // ทุกคนที่เข้าหน้านี้ได้ จัดการ review ได้เต็มสิทธิ์ (คุมสิทธิ์ที่ AppRouter)
   const canManageReview = true;
@@ -357,14 +360,18 @@ export default function PostProjectReview() {
   };
 
   const isProjectCompleted = (p) => p.status === "completed";
+  // โปรเจกต์ของลูกค้าที่เลือก · โปรเจกต์ที่เปิดค้างไว้ยังอยู่ในรายการเสมอ
+  const clientProjects = selectedClient
+    ? projects.filter((p) => p.id === selectedProjectId || clientMatches(p.client))
+    : projects;
   const countBy = (key) =>
     key === "all"
-      ? projects.length
-      : projects.filter((p) =>
+      ? clientProjects.length
+      : clientProjects.filter((p) =>
           key === "completed" ? isProjectCompleted(p) : !isProjectCompleted(p),
         ).length;
 
-  const projectOptions = projects
+  const projectOptions = clientProjects
     .filter(
       (p) =>
         statusFilter === "all" ||
@@ -499,6 +506,8 @@ export default function PostProjectReview() {
 
       {/* ════════ เลือกโปรเจกต์ ════════ */}
       <div className="flex flex-col gap-3 border-y border-gray-200 py-3 lg:flex-row lg:items-end">
+        {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar */}
+        <ClientFilter className="lg:w-[160px] lg:shrink-0" />
         <div className="shrink-0">
           <label className={FILTER_LABEL}>สถานะโปรเจกต์</label>
           <div className="flex flex-wrap gap-1.5">
@@ -537,7 +546,9 @@ export default function PostProjectReview() {
             onChange={(o) => setSelectedProjectId(o ? o.value : "")}
             placeholder="🔍 พิมพ์ค้นหา หรือเลือกโปรเจกต์..."
             isClearable
-            noOptionsMessage={() => "ไม่พบโปรเจกต์"}
+            noOptionsMessage={() =>
+              selectedClient ? `ไม่มีโปรเจกต์ของ ${selectedClient.name}` : "ไม่พบโปรเจกต์"
+            }
           />
         </div>
       </div>

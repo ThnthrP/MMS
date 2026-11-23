@@ -15,6 +15,7 @@ import {
   Legend,
 } from "recharts";
 import { AppContent } from "../../context/AppContext";
+import ClientFilter from "../../components/ClientFilter";
 
 // ══════════════════════════════════════════════════════════
 // palette (recharts ต้องใช้ค่าสีจริง ไม่ใช่ class)
@@ -48,8 +49,9 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function buildCSV(d) {
+function buildCSV(d, clientName) {
   const rows = [["Section", "Item", "Value"]];
+  if (clientName) rows.push(["Filter", "Client (Projects only)", clientName]);
   rows.push(["Summary", "Total Workers", d.totalWorkers]);
   rows.push(["Summary", "Total Projects", d.projects.total]);
   rows.push(["Summary", "Active Projects", d.projects.active]);
@@ -141,7 +143,10 @@ function AngledTick({ x, y, payload }) {
 // main
 // ══════════════════════════════════════════════════════════
 export default function AnalyticsReports() {
-  const { backendUrl } = useContext(AppContent);
+  // โหมด multi: เลือกลูกค้า → กรองส่วนที่ผูกกับ project (การลงงาน / จำนวน Project)
+  //   Headcount, Top Positions, Mobilization / Availability, Cert = พนักงานทั้งหมด (Worker Pool ใช้ร่วม)
+  const { backendUrl, isMultiClient, selectedClient } = useContext(AppContent);
+  const clientId = selectedClient?.id || undefined;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -156,12 +161,19 @@ export default function AnalyticsReports() {
   const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   useEffect(() => {
+    let ignore = false;
     axios
-      .get(`${backendUrl}/api/analytics`, { withCredentials: true })
-      .then((res) => setData(res.data))
+      .get(`${backendUrl}/api/analytics`, {
+        withCredentials: true,
+        params: { clientId },
+      })
+      .then((res) => !ignore && setData(res.data))
       .catch((err) => console.error(err))
-      .finally(() => setLoading(false));
-  }, [backendUrl]);
+      .finally(() => !ignore && setLoading(false));
+    return () => {
+      ignore = true;
+    };
+  }, [backendUrl, clientId]);
 
   useEffect(() => {
     // กดสลับ Q เร็วๆ — ทิ้งผลลัพธ์ของ request เก่า
@@ -171,7 +183,11 @@ export default function AnalyticsReports() {
     axios
       .get(`${backendUrl}/api/analytics/deployment`, {
         withCredentials: true,
-        params: { year: selectedYear, quarter: selectedQuarter || undefined },
+        params: {
+          year: selectedYear,
+          quarter: selectedQuarter || undefined,
+          clientId,
+        },
       })
       .then((res) => {
         if (!ignore) setDeployment(res.data);
@@ -183,16 +199,16 @@ export default function AnalyticsReports() {
     return () => {
       ignore = true;
     };
-  }, [backendUrl, selectedYear, selectedQuarter]);
+  }, [backendUrl, selectedYear, selectedQuarter, clientId]);
 
   const exportCSV = () => {
     if (!data) return;
     // \uFEFF (BOM) — ให้ Excel อ่านภาษาไทยในชื่อแผนก/ตำแหน่งถูกต้อง ไม่เป็นตัวอักษรเพี้ยน
     downloadBlob(
-      new Blob(["\uFEFF" + buildCSV(data)], {
+      new Blob(["\uFEFF" + buildCSV(data, selectedClient?.name)], {
         type: "text/csv;charset=utf-8;",
       }),
-      `analytics-report-${today()}.csv`,
+      `analytics-report-${selectedClient ? `${selectedClient.name}-` : ""}${today()}.csv`,
     );
   };
 
@@ -260,11 +276,15 @@ export default function AnalyticsReports() {
         </div>
       </div>
 
-      {/* ════════ Filter: Year + Quarter ════════ */}
-      <div className="flex flex-wrap items-center gap-3 border-y border-gray-200 py-3">
-        <span className="text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
+      {/* ════════ Filter: Client (โหมด multi) + Year + Quarter ════════ */}
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-3 border-y border-gray-200 py-3">
+        {/* โหมด multi เท่านั้น — ค่าเดียวกับตัวเลือกบน Navbar */}
+        <ClientFilter className="w-full sm:w-[170px]" />
+        <div className="min-w-0">
+        <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.4px] text-gray-500">
           ช่วงเวลา (การลงงาน)
         </span>
+        <div className="flex flex-wrap items-center gap-3">
         <select
           value={selectedYear}
           onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -294,6 +314,15 @@ export default function AnalyticsReports() {
             );
           })}
         </div>
+        </div>
+        </div>
+        {isMultiClient && selectedClient && (
+          <div className="w-full text-[11px] text-gray-500 lg:ml-auto lg:w-auto lg:max-w-[560px] lg:pb-1.5 lg:text-right">
+            Position Usage, Onshore / Offshore, Breakdown by Project และจำนวน Project = เฉพาะ{" "}
+            <b className="text-[#c2410c]">{selectedClient.name}</b> · Headcount, Top Positions,
+            สถานะพนักงาน และ Cert = พนักงานทั้งหมด (Worker Pool ใช้ร่วมทุกลูกค้า)
+          </div>
+        )}
       </div>
 
       {/* ════════ Position Usage + Onshore/Offshore ════════ */}

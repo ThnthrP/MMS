@@ -4,10 +4,18 @@ const prisma = new PrismaClient();
 
 const SIXTY_DAYS = 60 * 86400000;
 
+// clientId (โหมด multi) — กรองเฉพาะข้อมูลที่ผูกกับ project ของลูกค้านั้น (Project → Contract → Client)
+//   ไม่ส่ง / ค่าว่าง = ทุกลูกค้า (เหมือนเดิม) · พนักงาน / cert เป็น Worker Pool รวม ไม่กรอง
+const projectClientWhere = (clientId) =>
+  typeof clientId === "string" && clientId.trim()
+    ? { contract: { clientId: clientId.trim() } }
+    : {};
+
 // ════════════════════════════════════════════════════════════════
 // GET — aggregate ทั้งหมดสำหรับ Analytics & Reports (คืน JSON ก้อนเดียว)
+//   clientId → นับเฉพาะ Projects ของลูกค้านั้น (ส่วนอื่นเป็นพนักงานทั้งหมด)
 // ════════════════════════════════════════════════════════════════
-export async function getAnalytics() {
+export async function getAnalytics({ clientId } = {}) {
   const [employees, projects, trainings] = await Promise.all([
     prisma.employee.findMany({
       select: {
@@ -19,7 +27,10 @@ export async function getAnalytics() {
         position: { select: { name: true } },
       },
     }),
-    prisma.project.findMany({ select: { status: true } }),
+    prisma.project.findMany({
+      where: projectClientWhere(clientId),
+      select: { status: true },
+    }),
     prisma.employeeTraining.findMany({
       where: { isLatest: true },
       select: { expiryDate: true },
@@ -127,14 +138,17 @@ function getDateRange(year, quarter) {
   };
 }
 
-export async function getDeploymentReport({ year, quarter } = {}) {
+export async function getDeploymentReport({ year, quarter, clientId } = {}) {
   const range = getDateRange(year, quarter);
+  const clientWhere = projectClientWhere(clientId);
 
   const assignments = await prisma.assignment.findMany({
     where: {
       status: { not: "cancelled" },
       projectId: { not: null },
       ...(range ? { mobDate: { gte: range.start, lt: range.end } } : {}),
+      // เฉพาะการลงงานใน project ของลูกค้าที่เลือก (โหมด multi)
+      ...(clientWhere.contract ? { project: { is: clientWhere } } : {}),
     },
     select: {
       employeeId: true,
@@ -203,6 +217,7 @@ export async function getDeploymentReport({ year, quarter } = {}) {
     filter: {
       year: year ? Number(year) : null,
       quarter: quarter ? Number(quarter) : null,
+      clientId: clientWhere.contract ? clientWhere.contract.clientId : null,
     },
     positionUsage,
     siteType,
