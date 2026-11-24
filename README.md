@@ -68,11 +68,34 @@ The same code base runs as two deployments, configured only through `.env`:
 | Deployment | Setting | What users see |
 |------------|---------|----------------|
 | MMS-Chevron (current) | `VITE_CLIENT_MODE=single`, `VITE_PRIMARY_CLIENT_NAME=Chevron` (defaults) | Chevron columns, filters, and links only |
-| MMS Multi-client (planned) | `VITE_CLIENT_MODE=multi` | A column, filter option, and link checkbox for every client |
+| MMS Multi-client (planned) | `VITE_CLIENT_MODE=multi` | A client selector in the navbar; project-related pages show only the selected client. Trainings shows a ✓ column per client |
 
-The setting lives in `frontend/src/config/clientMode.js`. It only changes
-what the UI shows; restricting users to their own clients
-(`UserClientAccess`) must be enforced in the API.
+The setting lives in `frontend/src/config/clientMode.js`; client order
+(Chevron · Erawan · PTT · Valeura) and name matching (aliases such as
+PTT = PTTEP) are in `frontend/src/utils/clientMode.js`. It only changes what
+the UI shows; restricting users to their own clients (`UserClientAccess`) must
+be enforced in the API.
+
+In multi-client mode, the client picked in the navbar (or the Client filter on a
+page; both use the same value, remembered per browser) scopes Projects, Manpower
+Requirements, Assign Names, PE Approvals, Mobilization, Post-Project Review,
+Manpower Calendar, Dashboard (open positions, PE, starting soon), Compliance
+(% match per client), Analytics & Reports, Trainings, Training Matrix, and
+Matrix Editor. Workers, Bookings, Training Plan, Positions, and Departments stay
+company-wide, because workers and certificates are shared across clients.
+"Clear filter" on a page does not reset the client. In single mode no client
+selector is shown.
+
+> Screenshots below use assumed demo data in a dev environment. All other
+> screenshots in this README show single-client mode.
+
+<table>
+  <tr>
+    <td><img src="screenshots/multi-navbar-projects.png" alt="Multi-client: navbar selector and Projects"><br><sub>Client selector + Projects</sub></td>
+    <td><img src="screenshots/multi-trainings.png" alt="Multi-client: Trainings"><br><sub>Trainings: one column per client</sub></td>
+    <td><img src="screenshots/multi-compliance.png" alt="Multi-client: Compliance"><br><sub>Compliance: % match per client</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -370,7 +393,10 @@ the top and the search icon expands the sidebar with the cursor in the search bo
   client requirement gap analysis (Mandatory / Assigned / Others) and PE
   Tracking export. The Gap Analysis and Training Alerts modals show the
   worker's planned training rounds (see Training Plan)
-- **Analytics & Reports:** workforce, compliance, and project reports
+- **Analytics & Reports:** workforce, compliance, and project reports. In
+  multi-client mode, project counts and the deployment report follow the
+  selected client (`clientId` query parameter), and the CSV file name includes
+  the client
 
 ### Operations
 - **Projects & Positions:** Master Project Register (ON Number) by year with
@@ -630,9 +656,10 @@ MMS/
 │   │   │   ├── print/             # CV / Roster / Skill Matrix print components
 │   │   │   ├── SelectedPeoplePanel.jsx  # "selected workers" side panel (Bulk Add, Request Training / Medical)
 │   │   │   ├── TrainingPlanNotice.jsx   # a worker's planned training rounds (gap / alert modals)
+│   │   │   ├── ClientFilter.jsx   # page Client filter (multi mode), same value as the navbar selector
 │   │   │   └── ProtectedRoute.jsx
 │   │   ├── config/                # clientMode.js (single / multi-client mode)
-│   │   ├── context/               # AppContext, WorkerAppContext
+│   │   ├── context/               # AppContext (incl. selected client), WorkerAppContext
 │   │   ├── hooks/                 # useStickyState
 │   │   ├── pages/
 │   │   │   ├── auth/              # Login, ResetPassword
@@ -653,7 +680,8 @@ MMS/
 │   │   │   ├── worker/            # Worker App pages (login, readiness, PIN change, ...)
 │   │   │   └── admin/             # AdminUsers, AuditLogs, DataImport
 │   │   ├── routes/                # AppRouter, WorkerAppRouter
-│   │   ├── utils/                 # workerSearch, medicalStatus (shared medical thresholds)
+│   │   ├── utils/                 # workerSearch, medicalStatus (shared medical thresholds),
+│   │   │                          #   clientMode (client order and name matching)
 │   │   └── App.jsx
 │   └── vite.config.js
 │
