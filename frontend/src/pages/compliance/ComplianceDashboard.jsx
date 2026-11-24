@@ -430,7 +430,10 @@ function Modal({ maxW, title, subtitle, headerRight, onClose, children }) {
 // main
 // ══════════════════════════════════════════════════════════
 export default function ComplianceDashboard() {
-  const { backendUrl, isMultiClient, selectedClient } = useContext(AppContent);
+  const { backendUrl, isMultiClient, selectedClient, clients } = useContext(AppContent);
+  // ชื่อลูกค้าตามที่ตั้งไว้ในระบบ (w.clients ใช้ key ตัวเล็ก เช่น "ptt" → "PTT")
+  const clientLabel = (key) =>
+    (clients || []).find((c) => sameClient(c.name, key))?.name || capitalize(key);
   // โหมด multi: % Match ของลูกค้าที่เลือก (Worker Pool ใช้ร่วม — ไม่ซ่อนพนักงาน)
   const matchLabel = !isMultiClient
     ? "CHEVRON MATCH"
@@ -440,7 +443,9 @@ export default function ComplianceDashboard() {
   const TABLE_HEADERS = tableHeaders(matchLabel);
   // ลูกค้าที่แนบไปกับคำขอ training / medical
   const requestClientName = (w) =>
-    isMultiClient && selectedClient ? selectedClient.name : clientNameOf(w);
+    isMultiClient
+      ? selectedClient?.name || clientLabel(Object.keys(w?.clients || {})[0]) || null
+      : clientNameOf(w);
 
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -785,7 +790,7 @@ export default function ComplianceDashboard() {
         <div className="flex flex-col items-center gap-0.5">
           {entries.map(([k, c]) => (
             <div key={k} className="whitespace-nowrap text-[11px]">
-              <span className="text-gray-500">{capitalize(k)}</span>{" "}
+              <span className="text-gray-500">{clientLabel(k)}</span>{" "}
               <b
                 className={
                   c.missing === 0
@@ -1278,7 +1283,7 @@ export default function ComplianceDashboard() {
                 {/* client เดียว → ชื่อ client อยู่บรรทัดเดียวกับตำแหน่ง ไม่ต้องมีกรอบแยก */}
                 {single && (
                   <span className="font-semibold uppercase text-gray-700">
-                    {" "}· {clientEntries[0][0]}
+                    {" "}· {clientLabel(clientEntries[0][0])}
                   </span>
                 )}
               </div>
@@ -1309,7 +1314,7 @@ export default function ComplianceDashboard() {
                 >
                   {!single && (
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-bold uppercase">{clientName}</span>
+                      <span className="text-sm font-bold uppercase">{clientLabel(clientName)}</span>
                       {scorePill(client)}
                     </div>
                   )}
