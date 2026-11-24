@@ -14,6 +14,8 @@ export async function importEmployeeTrainings(req, res) {
   const flag = (v) => ["1", "true", "yes"].includes(String(v || "").toLowerCase());
   const dryRun = flag(req.query.dryRun);
   const createMissing = flag(req.query.createMissing);
+  // โหมด multi-client: ลูกค้าของไฟล์ (ใช้ contract ของลูกค้านั้นจับคู่ชื่อ training) · ไม่ส่ง = Chevron
+  const clientName = String(req.query.clientName || "").trim().slice(0, 100) || undefined;
 
   // preview ไม่ต้องลง audit log
   if (dryRun) setAuditContext(req, { skip: true });
@@ -31,13 +33,14 @@ export async function importEmployeeTrainings(req, res) {
       fileName,
       dryRun,
       createMissing,
+      clientName,
     });
 
     if (!dryRun) {
       const c = report.counts;
       setAuditContext(req, {
         summary:
-          `นำเข้า Training Record "${fileName}" — ` +
+          `นำเข้า Training Record "${fileName}" (${report.client}) — ` +
           `พนักงาน ${report.employeesMatched} คน` +
           (c.employeeCreate ? `, สร้างพนักงานใหม่ ${c.employeeCreate} คน` : "") +
           `, training ใหม่ ${c.trainingCreate}, อัปเดต ${c.trainingUpdate}, ` +

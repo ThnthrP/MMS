@@ -331,9 +331,15 @@ export async function runTrainingImport({
     orderBy: { createdAt: "desc" },
   });
   if (!contract) throw new Error(`ไม่พบ contract ที่ active ของ ${clientName}`);
-  const medicalRequirement = await prisma.medicalRequirement.findFirst({
-    where: { clientId: client.id, name: { contains: "Medical Check" } },
-  });
+  // ผลตรวจสุขภาพเป็นของพนักงาน ไม่ขึ้นกับลูกค้า — ลูกค้าที่ยังไม่มี requirement ของตัวเอง
+  // (เช่นลูกค้าใหม่ในโหมด multi) ใช้ "Medical Check" ที่มีอยู่แล้วในระบบ ไม่ข้ามผลตรวจทั้งไฟล์
+  const medicalRequirement =
+    (await prisma.medicalRequirement.findFirst({
+      where: { clientId: client.id, name: { contains: "Medical Check" } },
+    })) ||
+    (await prisma.medicalRequirement.findFirst({
+      where: { name: { contains: "Medical Check" } },
+    }));
 
   // ── mapping ชื่อ training ในไฟล์ → ClientTraining (ใน contract) → GlobalTraining (ทั้งหมด) ──
   // จับได้ทั้ง nameAlias, ชื่อกลาง และ "ชื่อที่ HR ใช้ในไฟล์" (GlobalTraining.fullName — หลายชื่อคั่นด้วย |)
@@ -503,7 +509,7 @@ export async function runTrainingImport({
     changesTruncated: false,
     errors: [],
     warnings: [
-      ...(medicalRequirement ? [] : ['ไม่พบ MedicalRequirement "Medical Check" ของ client นี้ — ข้ามผลตรวจสุขภาพ']),
+      ...(medicalRequirement ? [] : ['ไม่พบ MedicalRequirement "Medical Check" ในระบบ — ข้ามผลตรวจสุขภาพ']),
       ...(parsed.hasIdColumn ? [] : ["ไฟล์นี้ไม่มีคอลัมน์ ID Employee — จับคู่พนักงานด้วยชื่อทั้งหมด ตรวจรายชื่อให้ดีก่อนนำเข้า"]),
       ...sharedTrainings.map((names) => `หลายคอลัมน์เป็น training เดียวกัน (ใช้วันที่ล่าสุด): ${names.join(" · ")}`),
     ],

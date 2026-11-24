@@ -73,13 +73,13 @@ const KINDS = {
 // ── เก็บไฟล์ + รายงานล่าสุดไว้ใน memory ของแอป ──
 // สลับไปเมนูอื่นแล้วกลับมา ยังอยู่ครบ / refresh หน้า หรือ logout → หายเอง
 // (ตั้งใจไม่เก็บใน localStorage เพราะรายงานมีชื่อ/รหัสพนักงาน)
-const cache = { kind: "training", file: null, report: null, createMissing: false, at: null };
+const cache = { kind: "training", file: null, report: null, createMissing: false, at: null, client: null };
 
 const fmtTime = (d) =>
   d ? new Date(d).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : "";
 
 export default function DataImport() {
-  const { backendUrl } = useContext(AppContent);
+  const { backendUrl, isMultiClient, clients, selectedClient } = useContext(AppContent);
   const inputRef = useRef(null);
   const [file, setFile] = useState(cache.file);
   const [report, setReport] = useState(cache.report);
@@ -87,11 +87,18 @@ export default function DataImport() {
   const [busy, setBusy] = useState(""); // "preview" | "import" | ""
   const [createMissing, setCreateMissing] = useState(cache.createMissing);
   const [kind, setKind] = useState(cache.kind);
+  // โหมด multi: Training Record เป็นของลูกค้าไหน (ใช้ contract ของลูกค้านั้นจับคู่ชื่อ training)
+  // ค่าเริ่มต้น = ลูกค้าที่เลือกบน Navbar · โหมด single ไม่ส่ง → backend ใช้ Chevron
+  const [importClient, setImportClient] = useState(cache.client || selectedClient?.name || "");
   const K = KINDS[kind];
+  const askClient = isMultiClient && kind === "training";
+  useEffect(() => {
+    if (isMultiClient && !importClient && clients?.length) setImportClient(clients[0].name);
+  }, [isMultiClient, clients, importClient]);
 
   useEffect(() => {
-    Object.assign(cache, { kind, file, report, createMissing, at: reportAt });
-  }, [kind, file, report, createMissing, reportAt]);
+    Object.assign(cache, { kind, file, report, createMissing, at: reportAt, client: importClient });
+  }, [kind, file, report, createMissing, reportAt, importClient]);
 
   const pickFile = (f) => {
     setFile(f || null);
@@ -114,12 +121,14 @@ export default function DataImport() {
 
   const send = async (dryRun) => {
     if (!file) return toast.warn("กรุณาเลือกไฟล์ก่อน");
+    if (askClient && !importClient) return toast.warn("กรุณาเลือกลูกค้าของไฟล์ก่อน");
     setBusy(dryRun ? "preview" : "import");
     try {
       const fd = new FormData();
       fd.append("file", file);
       const { data } = await axios.post(
-        `${backendUrl}/api/admin/import/${K.endpoint}?dryRun=${dryRun ? 1 : 0}&createMissing=${createMissing ? 1 : 0}`,
+        `${backendUrl}/api/admin/import/${K.endpoint}?dryRun=${dryRun ? 1 : 0}&createMissing=${createMissing ? 1 : 0}` +
+          (askClient ? `&clientName=${encodeURIComponent(importClient)}` : ""),
         fd,
         { withCredentials: true },
       );
@@ -154,7 +163,7 @@ export default function DataImport() {
     const total = c.employeeCreate + c.trainingCreate + c.trainingUpdate + c.medicalCreate + c.medicalUpdate + c.passportUpsert + c.employeeInfoUpdate;
     if (!total) return toast.info("ไม่มีข้อมูลที่เปลี่ยนแปลง");
     const extra = c.employeeCreate ? `\nและสร้างพนักงานใหม่ ${c.employeeCreate} คน` : "";
-    if (!window.confirm(`ยืนยันนำเข้า "${report.fileName}"?\nจะบันทึกการเปลี่ยนแปลง ${total} รายการลงระบบ${extra}`)) return;
+    if (!window.confirm(`ยืนยันนำเข้า "${report.fileName}"${isMultiClient ? ` (ลูกค้า ${report.client})` : ""}?\nจะบันทึกการเปลี่ยนแปลง ${total} รายการลงระบบ${extra}`)) return;
     send(false);
   };
 
@@ -193,6 +202,31 @@ export default function DataImport() {
             ))}
           </div>
         </div>
+
+        {askClient && (
+          <div className="mb-3 max-w-[260px]">
+            <label className={LABEL}>ลูกค้าของไฟล์</label>
+            <select
+              value={importClient}
+              disabled={!!busy}
+              onChange={(e) => {
+                setImportClient(e.target.value);
+                setReport(null); // เปลี่ยนลูกค้า → ต้อง Preview ใหม่
+                setReportAt(null);
+              }}
+              className="box-border h-9 w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 text-[13px] outline-none focus:border-blue-400 disabled:cursor-not-allowed"
+            >
+              {(clients || []).map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1 text-[11px] text-gray-400">
+              ใช้ชื่อ training ของลูกค้านี้จับคู่คอลัมน์ในไฟล์ · ใบเซอร์ใช้ได้กับทุกลูกค้าเหมือนเดิม
+            </div>
+          </div>
+        )}
 
         <div className={LABEL}>
           ไฟล์{" "}
@@ -290,7 +324,8 @@ export default function DataImport() {
               </span>
             )}
             <span className="ml-2 font-normal">
-              {report.fileName} · sheet “{report.sheetName}” · หัวตารางแถว {report.headerRow} · {report.contract}
+              {report.fileName} · sheet “{report.sheetName}” · หัวตารางแถว {report.headerRow} ·{" "}
+              {isMultiClient && report.client ? `${report.client} — ` : ""}{report.contract}
               {reportAt && ` · เมื่อ ${fmtTime(reportAt)} น.`}
             </span>
           </div>
